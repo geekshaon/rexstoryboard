@@ -1,0 +1,6 @@
+{
+  "name": "Visual Storyboard & Scene Spec Studio (VSSS)",
+  "description": "Studio for designing 1920x1080 educational video storyboards, visual references, and Remotion/Manim animation specifications.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
