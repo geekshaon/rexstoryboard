@@ -15,57 +15,40 @@ export function measureDomElementHeight(elementId: string): number | undefined {
   if (!container) return undefined;
 
   const comp = window.getComputedStyle(container);
-  const padTop = parseFloat(comp.paddingTop) || 0;
-  const padBottom = parseFloat(comp.paddingBottom) || 0;
   const borderTop = parseFloat(comp.borderTopWidth) || 0;
   const borderBottom = parseFloat(comp.borderBottomWidth) || 0;
-  const verticalChrome = padTop + padBottom + borderTop + borderBottom;
 
-  // Determine current zoom scale of canvas artboard transform (e.g., 0.26 for 26% zoom)
-  const artboard = document.getElementById('vsss-artboard-canvas');
-  let scale = 1;
-  if (artboard && artboard.offsetWidth > 0) {
-    scale = artboard.getBoundingClientRect().width / artboard.offsetWidth;
-  } else {
-    const containerRect = container.getBoundingClientRect();
-    if (container.offsetWidth > 0 && containerRect.width > 0) {
-      scale = containerRect.width / container.offsetWidth;
-    }
-  }
-  if (scale <= 0) scale = 1;
+  // Temporarily collapse container height to 'auto' so it reflects true intrinsic content
+  const prevHeight = container.style.height;
+  const prevMaxHeight = container.style.maxHeight;
+  container.style.height = 'auto';
+  container.style.maxHeight = 'none';
 
-  const innerChildren = Array.from(container.children) as HTMLElement[];
-  if (innerChildren.length > 0) {
-    let minY = Infinity;
-    let maxY = -Infinity;
+  // Also remove flex-1 stretching on any immediate content sub-containers
+  const flex1Elements = Array.from(container.querySelectorAll<HTMLElement>('.flex-1'));
+  const prevFlexStyles = flex1Elements.map((el) => ({
+    flex: el.style.flex,
+    height: el.style.height
+  }));
 
-    for (const child of innerChildren) {
-      // Ignore hidden or floating toolbars
-      if (child.classList.contains('vsss-export-hide')) continue;
+  flex1Elements.forEach((el) => {
+    el.style.flex = '0 0 auto';
+    el.style.height = 'auto';
+  });
 
-      const r = child.getBoundingClientRect();
-      if (r.height > 0) {
-        minY = Math.min(minY, r.top);
-        maxY = Math.max(maxY, r.bottom);
-      }
-    }
+  // In CSS box-sizing: border-box, offsetHeight with height: 'auto' is the exact border-box height!
+  const measuredTotalHeight = container.offsetHeight || (container.scrollHeight + borderTop + borderBottom);
 
-    // Direct unscaled heights in local artboard pixel space
-    const directH = innerChildren.reduce((acc, c) => {
-      if (c.classList.contains('vsss-export-hide')) return acc;
-      return acc + (c.scrollHeight || c.offsetHeight || 0);
-    }, 0);
+  // Restore previous inline styles immediately before paint
+  container.style.height = prevHeight;
+  container.style.maxHeight = prevMaxHeight;
+  flex1Elements.forEach((el, i) => {
+    el.style.flex = prevFlexStyles[i].flex;
+    el.style.height = prevFlexStyles[i].height;
+  });
 
-    let contentHeight = directH;
-    if (minY !== Infinity && maxY !== -Infinity && scale > 0) {
-      const rectH = (maxY - minY) / scale;
-      contentHeight = Math.max(directH, rectH);
-    }
-
-    if (contentHeight > 0) {
-      // Add vertical chrome + 20px breathing room so text never clips or touches borders tightly
-      return Math.round(contentHeight + verticalChrome + 20);
-    }
+  if (measuredTotalHeight > 0) {
+    return Math.round(measuredTotalHeight);
   }
 
   return undefined;

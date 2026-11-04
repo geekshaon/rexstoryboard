@@ -6,7 +6,7 @@ import { COMPONENT_DEFAULTS } from '../../componentDefaults';
 import { resolveElementStyles } from '../../styleUtils';
 import { useStudioStore } from '../../../store/studioStore';
 import { ElementErrorBoundary } from '../../../components/ElementErrorBoundary';
-import { getComponentDefinition } from '../../componentRegistry';
+import { lookupComponentDefinition } from '../../componentLookup';
 
 export const ContainerBoxRenderer: React.FC<{ element: SceneElement; isSelected: boolean }> = ({ element }) => {
   const { data, layoutVariant = 'flex_row' } = element;
@@ -69,7 +69,8 @@ export const ContainerBoxRenderer: React.FC<{ element: SceneElement; isSelected:
         </div>
       ) : (
         children.map((child) => {
-          const childDef = getComponentDefinition(child.type);
+          const childDef = lookupComponentDefinition(child.type);
+          if (!childDef) return null;
           const ChildRenderer = childDef.CanvasRenderer;
           const isChildSelected = child.id === selectedElementId;
 

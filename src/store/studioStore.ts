@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { get as idbGet, set as idbSet } from 'idb-keyval';
 import {
   ProjectData,
   Scene,
@@ -24,242 +23,21 @@ import {
 import { getComponentDefaults } from '../registry/componentDefaults';
 import { resolveThemePalette, THEME_COLOR_PRESETS } from '../utils/themePalettes';
 import { syncSceneElementsWithVoiceover, computeVoiceoverCues } from '../utils/voiceSync';
+import { INITIAL_PROJECT, EDUCATIONAL_TEMPLATES } from './initialData';
+import { transformSceneAspectRatio } from './aspectRatioTransform';
+import { calculateAutoFitHeight } from './autoFitHeight';
+import { debouncedSaveToDb, loadFromDb, migrateLegacyScene } from './persistence';
 
-const DB_STORAGE_KEY = 'vsss_project_state_v1';
+export { INITIAL_PROJECT };
 
-let saveDbTimer: ReturnType<typeof setTimeout> | null = null;
-const debouncedSaveToDb = (project: ProjectData) => {
-  if (typeof window === 'undefined' || typeof indexedDB === 'undefined') return;
-  if (saveDbTimer) clearTimeout(saveDbTimer);
-  saveDbTimer = setTimeout(async () => {
-    try {
-      await idbSet(DB_STORAGE_KEY, JSON.parse(JSON.stringify(project)));
-    } catch (err) {
-      console.warn('Failed to persist to IndexedDB:', err);
-    }
-  }, 400);
-};
-
-// Initial Demo Scene: AND Gate in Bangla
-const DEFAULT_DEMO_SCENE: Scene = {
-  id: 'scene_and_gate_demo',
-  name: 'ডিজিটাল লজিক গেট (AND Gate)',
-  aspectRatio: '16:9',
-  duration: 15,
-  autoDuration: true,
-  narrationScript: `ডিজিটাল ইলেকট্রনিক্সের তৃতীয় পর্বে সবাইকে স্বাগতম। আজকে আমরা জানব অ্যান্ড গেট (AND Gate) সম্পর্কে। 
-অ্যান্ড গেট এমন একটি মৌলিক লজিক সার্কিট যার সবগুলো ইনপুট এক বা সত্য হলেই আউটপুট সত্য হয়। 
-স্ক্রিনে এর লজিক সিম্বল, সত্যক সারণি এবং বুলিয়ান সমীকরণ লক্ষ্য করুন।`,
-  theme: {
-    bgPreset: 'blueprint',
-    customBgColor: '#0d1117',
-    gridEnabled: true,
-    gridType: 'line',
-    gridSize: 20,
-    gridColor: 'rgba(56, 189, 248, 0.12)',
-    gridOpacity: 0.15,
-    safeGuard: {
-      enabled: true,
-      showGuides: true,
-      top: 60,
-      right: 80,
-      bottom: 80,
-      left: 80,
-      snapToSafeGuard: true,
-      preset: 'youtube_video'
-    }
-  },
-  masterHeader: {
-    enabled: false,
-    maintainSafeGuard: true,
-    layoutMode: 'floating',
-    height: 80,
-    paddingX: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    title: 'ডিজিটাল ইলেকট্রনিক্স',
-    titleFontSize: 24,
-    showSubtitle: true,
-    subtitle: 'পর্ব ০৩ : লজিক গেটের প্রাথমিক ধারণা ও বিশ্লেষণ',
-    showBadge: true,
-    badge: 'ল্যাব ভেরিফিকেশন',
-    bgColor: 'rgba(15, 23, 42, 0.85)',
-    borderColor: 'rgba(56, 189, 248, 0.25)',
-    blur: 12,
-    textColor: '#f8fafc',
-    badgeBg: 'rgba(56, 189, 248, 0.15)',
-    badgeTextColor: '#38bdf8'
-  },
-  masterFooter: {
-    enabled: false,
-    maintainSafeGuard: true,
-    layoutMode: 'floating',
-    height: 60,
-    paddingX: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    note: 'বুলিয়ান সমীকরণ: Y = A · B (Y সমান A অ্যান্ড B)',
-    noteFontSize: 16,
-    showProgress: true,
-    progress: 'ধাপ ০১ / ০৪',
-    bgColor: 'rgba(15, 23, 42, 0.85)',
-    borderColor: 'rgba(56, 189, 248, 0.25)',
-    textColor: '#94a3b8',
-    noteColor: '#38bdf8'
-  },
-  elements: [
-    {
-      id: 'elem_header_demo',
-      type: 'header_card',
-      layoutVariant: 'floating_pill',
-      geometry: { x: 80, y: 50, width: 920, height: 72, zIndex: 15 },
-      style: {
-        bgMode: 'solid',
-        bgColor: 'rgba(15, 23, 42, 0.85)',
-        bgOpacity: 0.9,
-        backdropBlur: 12,
-        borderWidth: 1,
-        borderStyle: 'solid',
-        borderColor: 'rgba(56, 189, 248, 0.25)',
-        borderRadius: 16,
-        padding: 18,
-        glowColor: '#38bdf8',
-        glowIntensity: 0
-      },
-      typography: {
-        fontFamily: 'Kalpurush',
-        fontSize: 22,
-        fontWeight: '700',
-        lineHeight: 1.3,
-        textAlign: 'left',
-        textColor: '#f8fafc',
-        highlightColor: '#38bdf8'
-      },
-      animation: {
-        stepOrder: 1,
-        startAtSecond: 0,
-        entrance: 'fadeIn',
-        duration: 0.8,
-        delay: 0,
-        easing: 'spring',
-        emphasis: 'none'
-      },
-      data: {
-        title: 'ডিজিটাল ইলেকট্রনিক্স',
-        subtitle: 'পর্ব ০৩ : লজিক গেটের প্রাথমিক ধারণা ও বিশ্লেষণ',
-        badge: 'ল্যাব ভেরিফিকেশন',
-        showSubtitle: true,
-        showBadge: true,
-        badgeBg: 'rgba(56, 189, 248, 0.15)',
-        badgeTextColor: '#38bdf8'
-      }
-    },
-    {
-      id: 'elem_hero_header',
-      type: 'hero_text',
-      layoutVariant: 'title_with_subtitle',
-      geometry: { x: 80, y: 150, width: 920, height: 180, zIndex: 10 },
-      style: {
-        bgMode: 'solid',
-        bgColor: '#0f172a',
-        bgOpacity: 0.9,
-        backdropBlur: 8,
-        borderWidth: 2,
-        borderStyle: 'solid',
-        borderColor: 'rgba(56, 189, 248, 0.4)',
-        borderRadius: 16,
-        padding: 24,
-        glowColor: '#38bdf8',
-        glowIntensity: 10
-      },
-      typography: {
-        fontFamily: 'Kalpurush',
-        fontSize: 38,
-        fontWeight: '700',
-        lineHeight: 1.3,
-        textAlign: 'left',
-        textColor: '#f8fafc',
-        highlightColor: '#38bdf8'
-      },
-      animation: {
-        stepOrder: 1,
-        startAtSecond: 0,
-        entrance: 'fadeIn',
-        duration: 1.0,
-        delay: 0,
-        easing: 'spring',
-        emphasis: 'none'
-      },
-      data: {
-        text: 'ডিজিটাল ইলেকট্রনিক্স ও [অ্যান্ড গেট] ফান্ডামেন্টালস',
-        subtitle: 'দ্বিমুখী সত্যতা যাচাই এবং বুলিয়ান লজিক অপারেশনের সম্পূর্ণ সারসংক্ষেপ',
-        highlightWords: 'অ্যান্ড গেট'
-      }
-    },
-    {
-      id: 'elem_footer_demo',
-      type: 'footer_card',
-      layoutVariant: 'floating_pill',
-      geometry: { x: 80, y: 960, width: 920, height: 60, zIndex: 15 },
-      style: {
-        bgMode: 'solid',
-        bgColor: 'rgba(15, 23, 42, 0.85)',
-        bgOpacity: 0.9,
-        backdropBlur: 12,
-        borderWidth: 1,
-        borderStyle: 'solid',
-        borderColor: 'rgba(56, 189, 248, 0.25)',
-        borderRadius: 16,
-        padding: 16,
-        glowColor: '#38bdf8',
-        glowIntensity: 0
-      },
-      typography: {
-        fontFamily: 'Kalpurush',
-        fontSize: 16,
-        fontWeight: '500',
-        lineHeight: 1.4,
-        textAlign: 'left',
-        textColor: '#94a3b8',
-        highlightColor: '#38bdf8'
-      },
-      animation: {
-        stepOrder: 1,
-        startAtSecond: 0,
-        entrance: 'fadeIn',
-        duration: 0.8,
-        delay: 0,
-        easing: 'spring',
-        emphasis: 'none'
-      },
-      data: {
-        note: 'বুলিয়ান সমীকরণ: Y = A · B (Y সমান A অ্যান্ড B)',
-        progress: 'ধাপ ০১ / ০৪',
-        showProgress: true,
-        noteColor: '#38bdf8',
-        progressPercent: 25
-      }
-    }
-  ]
-};
-
-export const INITIAL_PROJECT: ProjectData = {
-  title: 'ডিজিটাল লজিক গেট মাস্টারক্লাস',
-  resolution: { width: 1920, height: 1080 },
-  fps: 30,
-  activeSceneId: 'scene_and_gate_demo',
-  scenes: [DEFAULT_DEMO_SCENE],
-  savedPresets: []
-};
-
-interface StudioState {
+export interface StudioState {
   project: ProjectData;
   selectedElementId: string | null;
   zoomScale: number;
   panOffset: { x: number; y: number };
   isAutoFit: boolean;
   isPreviewMode: boolean;
-  snapGrid: 20 | 10 | 0; // 20px default confirmed
+  snapGrid: 20 | 10 | 0;
   history: ProjectData[];
   historyIndex: number;
   isInitialized: boolean;
@@ -368,152 +146,17 @@ export const useStudioStore = create<StudioState>()(
     isBottomBarOpen: true,
 
     initialize: async () => {
-      try {
-        const saved = (await idbGet(DB_STORAGE_KEY)) as ProjectData | undefined;
-        if (saved && saved.scenes && saved.scenes.length > 0) {
-          saved.scenes.forEach((sc) => {
-            // Migrate legacy fixed masterHeader to first-class header_card component
-            if (sc.masterHeader && sc.masterHeader.enabled) {
-              const hasHeaderCard = sc.elements.some((e) => e.type === 'header_card');
-              if (!hasHeaderCard) {
-                sc.elements.unshift({
-                  id: `elem_header_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-                  type: 'header_card',
-                  layoutVariant: sc.masterHeader.layoutMode === 'banner' ? 'top_bar' : 'floating_pill',
-                  geometry: {
-                    x: 80,
-                    y: 50,
-                    width: 920,
-                    height: sc.masterHeader.height || 72,
-                    zIndex: 15
-                  },
-                  style: {
-                    bgMode: 'solid',
-                    bgColor: sc.masterHeader.bgColor || 'rgba(15, 23, 42, 0.85)',
-                    bgOpacity: 0.9,
-                    backdropBlur: sc.masterHeader.blur ?? 12,
-                    borderWidth: sc.masterHeader.borderWidth ?? 1,
-                    borderStyle: 'solid',
-                    borderColor: sc.masterHeader.borderColor || 'rgba(56, 189, 248, 0.25)',
-                    borderRadius: sc.masterHeader.borderRadius ?? 16,
-                    padding: 18,
-                    glowColor: '#38bdf8',
-                    glowIntensity: 0
-                  },
-                  typography: {
-                    fontFamily: 'Kalpurush',
-                    fontSize: sc.masterHeader.titleFontSize ?? 22,
-                    fontWeight: '700',
-                    lineHeight: 1.3,
-                    textAlign: 'left',
-                    textColor: sc.masterHeader.textColor || '#f8fafc',
-                    highlightColor: '#38bdf8'
-                  },
-                  animation: {
-                    stepOrder: 1,
-                    startAtSecond: 0,
-                    entrance: 'fadeIn',
-                    duration: 0.8,
-                    delay: 0,
-                    easing: 'spring',
-                    emphasis: 'none'
-                  },
-                  data: {
-                    title: sc.masterHeader.title || 'প্রধান শিরোনাম',
-                    subtitle: sc.masterHeader.subtitle || '',
-                    badge: sc.masterHeader.badge || '',
-                    showSubtitle: sc.masterHeader.showSubtitle !== false,
-                    showBadge: sc.masterHeader.showBadge !== false,
-                    badgeBg: sc.masterHeader.badgeBg || 'rgba(56, 189, 248, 0.15)',
-                    badgeTextColor: sc.masterHeader.badgeTextColor || '#38bdf8'
-                  }
-                });
-              }
-              sc.masterHeader.enabled = false;
-            }
-
-            // Migrate legacy fixed masterFooter to first-class footer_card component
-            if (sc.masterFooter && sc.masterFooter.enabled) {
-              const hasFooterCard = sc.elements.some((e) => e.type === 'footer_card');
-              if (!hasFooterCard) {
-                sc.elements.push({
-                  id: `elem_footer_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-                  type: 'footer_card',
-                  layoutVariant: sc.masterFooter.layoutMode === 'banner' ? 'bottom_bar' : 'floating_pill',
-                  geometry: {
-                    x: 80,
-                    y: 960,
-                    width: 920,
-                    height: sc.masterFooter.height || 60,
-                    zIndex: 15
-                  },
-                  style: {
-                    bgMode: 'solid',
-                    bgColor: sc.masterFooter.bgColor || 'rgba(15, 23, 42, 0.85)',
-                    bgOpacity: 0.9,
-                    backdropBlur: 12,
-                    borderWidth: sc.masterFooter.borderWidth ?? 1,
-                    borderStyle: 'solid',
-                    borderColor: sc.masterFooter.borderColor || 'rgba(56, 189, 248, 0.25)',
-                    borderRadius: sc.masterFooter.borderRadius ?? 16,
-                    padding: 16,
-                    glowColor: '#38bdf8',
-                    glowIntensity: 0
-                  },
-                  typography: {
-                    fontFamily: 'Kalpurush',
-                    fontSize: sc.masterFooter.noteFontSize ?? 16,
-                    fontWeight: '500',
-                    lineHeight: 1.4,
-                    textAlign: 'left',
-                    textColor: sc.masterFooter.textColor || '#94a3b8',
-                    highlightColor: '#38bdf8'
-                  },
-                  animation: {
-                    stepOrder: 1,
-                    startAtSecond: 0,
-                    entrance: 'fadeIn',
-                    duration: 0.8,
-                    delay: 0,
-                    easing: 'spring',
-                    emphasis: 'none'
-                  },
-                  data: {
-                    note: sc.masterFooter.note || '',
-                    progress: sc.masterFooter.progress || '',
-                    showProgress: sc.masterFooter.showProgress !== false,
-                    noteColor: sc.masterFooter.noteColor || '#38bdf8',
-                    progressPercent: 25
-                  }
-                });
-              }
-              sc.masterFooter.enabled = false;
-            }
-
-            if (!sc.theme.safeGuard) {
-              sc.theme.safeGuard = {
-                enabled: true,
-                showGuides: true,
-                top: 60,
-                right: 80,
-                bottom: 80,
-                left: 80,
-                snapToSafeGuard: true,
-                preset: 'youtube_video'
-              };
-            }
-          });
-          set((state) => {
-            state.project = saved;
-            state.history = [saved];
-            state.historyIndex = 0;
-            state.selectedElementId = saved.scenes[0]?.elements[0]?.id || null;
-            state.isInitialized = true;
-          });
-          return;
-        }
-      } catch (err) {
-        console.warn('Could not load from IndexedDB, using default project.', err);
+      const saved = await loadFromDb();
+      if (saved && saved.scenes && saved.scenes.length > 0) {
+        saved.scenes.forEach((sc) => migrateLegacyScene(sc));
+        set((state) => {
+          state.project = saved;
+          state.history = [saved];
+          state.historyIndex = 0;
+          state.selectedElementId = saved.scenes[0]?.elements[0]?.id || null;
+          state.isInitialized = true;
+        });
+        return;
       }
       set((state) => {
         state.isInitialized = true;
@@ -527,7 +170,6 @@ export const useStudioStore = create<StudioState>()(
     recordHistory: () => {
       const current = JSON.parse(JSON.stringify(get().project));
       set((state) => {
-        // Drop future history if after undo
         const newHistory = state.history.slice(0, state.historyIndex + 1);
         newHistory.push(current);
         if (newHistory.length > 30) newHistory.shift();
@@ -768,7 +410,7 @@ export const useStudioStore = create<StudioState>()(
 
     deleteScene: (id) => {
       const scenes = get().project.scenes;
-      if (scenes.length <= 1) return; // Keep at least 1 scene
+      if (scenes.length <= 1) return;
 
       set((state) => {
         state.project.scenes = state.project.scenes.filter((s) => s.id !== id);
@@ -784,109 +426,7 @@ export const useStudioStore = create<StudioState>()(
       set((state) => {
         const scene = state.project.scenes.find((s) => s.id === id);
         if (!scene) return;
-        const oldRatio = scene.aspectRatio || '16:9';
-        if (oldRatio === newRatio) return;
-
-        if (!scene.aspectRatioLayouts) {
-          scene.aspectRatioLayouts = {};
-        }
-
-        // 1. Snapshot current layout for oldRatio so it can be restored perfectly if user made a mistake or switches back
-        const currentSnapshot: Record<string, Geometry> = {};
-        scene.elements.forEach((el) => {
-          currentSnapshot[el.id] = { ...el.geometry };
-        });
-        scene.aspectRatioLayouts[oldRatio] = currentSnapshot;
-
-        scene.aspectRatio = newRatio;
-        const { width: newW, height: newH } = getSceneDimensions(newRatio);
-        const { width: oldW, height: oldH } = getSceneDimensions(oldRatio);
-
-        // 2. If user already had a saved layout for this target ratio, restore it with 100% precision!
-        const cachedLayout = scene.aspectRatioLayouts[newRatio];
-        if (cachedLayout && Object.keys(cachedLayout).length > 0) {
-          scene.elements.forEach((el) => {
-            if (cachedLayout[el.id]) {
-              el.geometry = { ...cachedLayout[el.id] };
-            }
-          });
-          return;
-        }
-
-        // 3. Otherwise, smart non-destructive repositioning & containment:
-        const sg = scene.theme.safeGuard?.enabled && scene.theme.safeGuard
-          ? scene.theme.safeGuard
-          : { top: 60, right: 60, bottom: 60, left: 60 };
-        const topMargin = scene.masterHeader.enabled ? Math.max(sg.top, scene.masterHeader.height + 24) : sg.top;
-        const bottomMargin = scene.masterFooter.enabled ? Math.max(sg.bottom, scene.masterFooter.height + 24) : sg.bottom;
-        const availableW = newW - sg.left - sg.right;
-        const availableH = newH - topMargin - bottomMargin;
-
-        if (newRatio === '9:16') {
-          // Converting Landscape (1920x1080) to Vertical (1080x1920) for Shorts / Mobile
-          // Stack elements vertically in reading order so they fit cleanly
-          const sorted = [...scene.elements].sort((a, b) => (a.geometry.y - b.geometry.y) || (a.geometry.x - b.geometry.x));
-          const count = sorted.length;
-          const targetW = Math.min(availableW, 940);
-          const startX = Math.round((newW - targetW) / 2);
-          const gap = 24;
-          const targetH = Math.min(420, Math.max(160, Math.floor((availableH - (count - 1) * gap) / Math.max(1, count))));
-
-          sorted.forEach((sortedEl, index) => {
-            const el = scene.elements.find((e) => e.id === sortedEl.id);
-            if (!el) return;
-            el.geometry.width = targetW;
-            el.geometry.height = Math.min(el.geometry.height, targetH);
-            el.geometry.x = startX;
-            el.geometry.y = topMargin + index * (targetH + gap);
-          });
-        } else if (newRatio === '16:9' && oldRatio === '9:16') {
-          // Converting Vertical (1080x1920) to Landscape (1920x1080)
-          const sorted = [...scene.elements].sort((a, b) => a.geometry.y - b.geometry.y);
-          if (sorted.length >= 2) {
-            const colW = Math.round((availableW - 40) / 2);
-            const rowCount = Math.ceil(sorted.length / 2);
-            const rowH = Math.min(420, Math.max(200, Math.floor((availableH - (rowCount - 1) * 30) / rowCount)));
-            sorted.forEach((sortedEl, index) => {
-              const el = scene.elements.find((e) => e.id === sortedEl.id);
-              if (!el) return;
-              const col = index % 2;
-              const row = Math.floor(index / 2);
-              el.geometry.width = colW;
-              el.geometry.height = rowH;
-              el.geometry.x = sg.left + col * (colW + 40);
-              el.geometry.y = topMargin + row * (rowH + 30);
-            });
-          } else {
-            sorted.forEach((sortedEl) => {
-              const el = scene.elements.find((e) => e.id === sortedEl.id);
-              if (!el) return;
-              el.geometry.width = Math.min(940, availableW);
-              el.geometry.height = Math.min(520, availableH);
-              el.geometry.x = Math.round((newW - el.geometry.width) / 2);
-              el.geometry.y = topMargin + 20;
-            });
-          }
-        } else {
-          // General Proportional Scaling
-          const scaleX = newW / oldW;
-          const scaleY = newH / oldH;
-          scene.elements.forEach((el) => {
-            const scaledW = Math.round(el.geometry.width * scaleX);
-            const scaledH = Math.round(el.geometry.height * scaleY);
-            const finalW = Math.min(availableW, Math.max(240, scaledW));
-            const finalH = Math.min(availableH, Math.max(120, scaledH));
-            const scaledX = Math.round(el.geometry.x * scaleX);
-            const scaledY = Math.round(el.geometry.y * scaleY);
-            const finalX = Math.max(sg.left, Math.min(newW - sg.right - finalW, scaledX));
-            const finalY = Math.max(topMargin, Math.min(newH - bottomMargin - finalH, scaledY));
-
-            el.geometry.width = finalW;
-            el.geometry.height = finalH;
-            el.geometry.x = finalX;
-            el.geometry.y = finalY;
-          });
-        }
+        transformSceneAspectRatio(scene, newRatio);
       });
       get().recordHistory();
     },
@@ -966,13 +506,11 @@ export const useStudioStore = create<StudioState>()(
         const dims = getSceneDimensions(scene.aspectRatio);
         const sg = scene.theme.safeGuard || { top: 60, right: 80, bottom: 80, left: 80 };
 
-        // When header is maintained inside safe guard, it occupies sg.top to sg.top + height
         const headerMaintain = scene.masterHeader.enabled && (scene.masterHeader.maintainSafeGuard !== false);
         const headerTopOffset = headerMaintain
           ? sg.top + scene.masterHeader.height + 20
           : (scene.masterHeader.enabled ? scene.masterHeader.height + 20 : sg.top);
 
-        // When footer is maintained inside safe guard, it occupies bottom: sg.bottom with height
         const footerMaintain = scene.masterFooter.enabled && (scene.masterFooter.maintainSafeGuard !== false);
         const footerBottomOffset = footerMaintain
           ? sg.bottom + scene.masterFooter.height + 20
@@ -1018,7 +556,6 @@ export const useStudioStore = create<StudioState>()(
 
         if (syncElements) {
           const palette = resolveThemePalette(scene.theme);
-          // 1. Update all elements in the scene
           scene.elements.forEach((el) => {
             el.style.bgColor = palette.cardBg;
             el.style.borderColor = palette.cardBorder;
@@ -1050,7 +587,6 @@ export const useStudioStore = create<StudioState>()(
             }
           });
 
-          // 2. Update master header and footer
           scene.masterHeader.bgColor = palette.headerBg;
           scene.masterHeader.borderColor = palette.headerBorder;
           scene.masterHeader.textColor = palette.headerText;
@@ -1250,7 +786,6 @@ export const useStudioStore = create<StudioState>()(
       const nextStepOrder = (activeScene?.elements.length || 0) + 1;
       const palette = activeScene ? resolveThemePalette(activeScene.theme) : null;
 
-      // Auto compute default startAtSecond synced with voiceover
       let defaultStartSecond = (nextStepOrder - 1) * 2.5;
       if (activeScene && activeScene.narrationScript?.trim()) {
         const cues = computeVoiceoverCues(activeScene.narrationScript, activeScene.duration);
@@ -1297,7 +832,6 @@ export const useStudioStore = create<StudioState>()(
         const bottomMargin = activeScene?.theme.safeGuard?.enabled ? activeScene.theme.safeGuard.bottom : 40;
         initialY = Math.max(0, sceneH - bottomMargin - defaultGeom.height);
       } else {
-        // Natural centering horizontally
         initialX = Math.max(20, Math.min(sceneW - initialWidth - 20, Math.round((sceneW - initialWidth) / 2)));
       }
 
@@ -1350,11 +884,9 @@ export const useStudioStore = create<StudioState>()(
         Object.assign(element.geometry, geom);
         const { width: W, height: H } = getSceneDimensions(scene.aspectRatio);
 
-        // Constrain width and height within canvas boundary
         if (element.geometry.width > W) element.geometry.width = W;
         if (element.geometry.height > H) element.geometry.height = H;
 
-        // Strict containment: card can NEVER be placed outside the frame
         element.geometry.x = Math.max(0, Math.min(Math.max(0, W - element.geometry.width), element.geometry.x));
         element.geometry.y = Math.max(0, Math.min(Math.max(0, H - element.geometry.height), element.geometry.y));
       });
@@ -1367,146 +899,7 @@ export const useStudioStore = create<StudioState>()(
         const element = scene?.elements.find((e) => e.id === id);
         if (!scene || !element) return;
 
-        const { height: H } = getSceneDimensions(scene.aspectRatio);
-
-        // Accurate vertical chrome: top/bottom padding + top/bottom borders
-        const padTop = element.geometry.paddingBox?.top ?? element.style.padding ?? 20;
-        const padBottom = element.geometry.paddingBox?.bottom ?? element.style.padding ?? 20;
-        const borderTop = element.style.borderWidths?.top ?? element.style.borderWidth ?? 1;
-        const borderBottom = element.style.borderWidths?.bottom ?? element.style.borderWidth ?? 1;
-        const verticalChrome = padTop + padBottom + borderTop + borderBottom;
-
-        // Accurate horizontal chrome for line-wrapping calculations
-        const padLeft = element.geometry.paddingBox?.left ?? element.style.padding ?? 20;
-        const padRight = element.geometry.paddingBox?.right ?? element.style.padding ?? 20;
-        const borderLeft = element.style.borderWidths?.left ?? element.style.borderWidth ?? 1;
-        const borderRight = element.style.borderWidths?.right ?? element.style.borderWidth ?? 1;
-        const innerW = Math.max(80, element.geometry.width - padLeft - padRight - borderLeft - borderRight);
-
-        let calculatedMinH = verticalChrome + 80;
-
-        switch (element.type) {
-          case 'hero_text': {
-            const titleSub = element.subStyles?.title;
-            const bodySub = element.subStyles?.body;
-            const fontSize = titleSub?.typography?.fontSize ?? element.typography.fontSize ?? 48;
-            const lineHeight = titleSub?.typography?.lineHeight ?? element.typography.lineHeight ?? 1.3;
-            const rawText = (element.data.text || 'প্রধান শিরোনাম').replace(/[\[\]{}]/g, '');
-            const charsPerLine = Math.max(1, Math.floor(innerW / (fontSize * 0.55)));
-            const lineCount = Math.max(1, Math.ceil(rawText.length / charsPerLine));
-            let textH = Math.round(lineCount * fontSize * lineHeight);
-
-            // Subtitle height if present
-            if (
-              element.layoutVariant === 'title_with_subtitle' ||
-              (element.data.subtitle && element.data.showSubtitle !== false)
-            ) {
-              const subFontSize =
-                bodySub?.typography?.fontSize ?? Math.max(14, Math.round(fontSize * 0.45));
-              const subLineHeight = bodySub?.typography?.lineHeight ?? 1.4;
-              const rawSub = (element.data.subtitle || '').replace(/[\[\]{}]/g, '');
-              const subCharsPerLine = Math.max(1, Math.floor(innerW / (subFontSize * 0.55)));
-              const subLineCount = Math.max(1, Math.ceil(rawSub.length / subCharsPerLine));
-              const subH = Math.round(subLineCount * subFontSize * subLineHeight);
-              textH += subH + 16;
-            }
-
-            calculatedMinH = verticalChrome + textH + 20;
-            break;
-          }
-          case 'header_card': {
-            const titleSub = element.subStyles?.title;
-            const titleFontSize = titleSub?.typography?.fontSize ?? element.typography.fontSize ?? 22;
-            calculatedMinH = verticalChrome + Math.max(36, titleFontSize * 1.4);
-            break;
-          }
-          case 'footer_card': {
-            const bodySub = element.subStyles?.body;
-            const noteFontSize = bodySub?.typography?.fontSize ?? element.typography.fontSize ?? 16;
-            const isProgress = element.layoutVariant === 'progress_bar';
-            calculatedMinH = verticalChrome + Math.max(30, noteFontSize * 1.4) + (isProgress ? 14 : 0);
-            break;
-          }
-          case 'subtitle_caption': {
-            const titleSub = element.subStyles?.title;
-            const bodySub = element.subStyles?.body;
-            const titleFontSize = titleSub?.typography?.fontSize ?? element.typography.fontSize ?? 22;
-            const titleLineHeight = titleSub?.typography?.lineHeight ?? 1.3;
-            const bodyFontSize =
-              bodySub?.typography?.fontSize ?? Math.max(14, Math.round(titleFontSize * 0.75));
-            const bodyLineHeight = bodySub?.typography?.lineHeight ?? 1.5;
-
-            let contentH = 0;
-            if (element.data.showBadge !== false && element.data.badge) {
-              contentH += 26;
-            }
-            if (element.data.showTitle !== false && element.data.title) {
-              const rawTitle = element.data.title.replace(/[\[\]{}]/g, '');
-              const titleChars = Math.max(1, Math.floor(innerW / (titleFontSize * 0.55)));
-              const titleLines = Math.max(1, Math.ceil(rawTitle.length / titleChars));
-              contentH += Math.round(titleLines * titleFontSize * titleLineHeight) + 8;
-            }
-            if (element.data.body) {
-              const rawBody = element.data.body.replace(/[\[\]{}]/g, '');
-              const bodyChars = Math.max(1, Math.floor(innerW / (bodyFontSize * 0.55)));
-              const bodyLines = Math.max(1, Math.ceil(rawBody.length / bodyChars));
-              contentH += Math.round(bodyLines * bodyFontSize * bodyLineHeight);
-            }
-            calculatedMinH = verticalChrome + Math.max(50, contentH) + 12;
-            break;
-          }
-          case 'basic_text': {
-            const fontSize = element.typography.fontSize ?? 20;
-            const lineHeight = element.typography.lineHeight || 1.4;
-            const rawText = element.data.text || 'সাধারণ টেক্সট ব্লক';
-            const charsPerLine = Math.max(1, Math.floor(innerW / (fontSize * 0.55)));
-            const lineCount = Math.max(1, Math.ceil(rawText.length / charsPerLine));
-            const textH = Math.round(lineCount * fontSize * lineHeight);
-            calculatedMinH = verticalChrome + textH + 16;
-            break;
-          }
-          case 'basic_badge': {
-            calculatedMinH = verticalChrome + 32;
-            break;
-          }
-          case 'basic_divider': {
-            calculatedMinH = verticalChrome + 12;
-            break;
-          }
-          case 'container_box': {
-            const rawChildren = scene.elements.filter(
-              (e) => e.parentId === element.id || (Array.isArray(element.data?.childIds) && element.data.childIds.includes(e.id))
-            );
-            const gap = element.data?.gap ?? 16;
-            const variant = element.layoutVariant || 'flex_row';
-            if (variant === 'flex_column') {
-              const totalH = rawChildren.reduce((acc, c) => acc + c.geometry.height, 0);
-              const gapsH = Math.max(0, rawChildren.length - 1) * gap;
-              calculatedMinH = verticalChrome + Math.max(60, totalH + gapsH);
-            } else if (variant === 'grid_2col') {
-              const rows = Math.ceil(rawChildren.length / 2);
-              calculatedMinH = verticalChrome + Math.max(80, rows * 120 + Math.max(0, rows - 1) * gap);
-            } else if (variant === 'grid_3col') {
-              const rows = Math.ceil(rawChildren.length / 3);
-              calculatedMinH = verticalChrome + Math.max(80, rows * 120 + Math.max(0, rows - 1) * gap);
-            } else {
-              const maxChildH = rawChildren.reduce((max, c) => Math.max(max, c.geometry.height), 0);
-              calculatedMinH = verticalChrome + Math.max(60, maxChildH);
-            }
-            break;
-          }
-          default:
-            calculatedMinH = verticalChrome + 120;
-        }
-
-        const idealHeight = (typeof measuredHeight === 'number' && measuredHeight > 0)
-          ? Math.max(measuredHeight, calculatedMinH)
-          : calculatedMinH;
-
-        element.geometry.height = Math.min(H - 40, Math.max(24, Math.round(idealHeight)));
-        if (element.geometry.y + element.geometry.height > H - 20) {
-          element.geometry.y = Math.max(20, H - element.geometry.height - 20);
-        }
+        calculateAutoFitHeight(element, scene, measuredHeight);
       });
       get().recordHistory();
     },
@@ -1539,7 +932,6 @@ export const useStudioStore = create<StudioState>()(
         const element = scene?.elements.find((e) => e.id === id);
         if (element) {
           Object.assign(element.animation, anim);
-          // When startAtSecond is 0, auto-sync with voice cues; if > 0 and syncWithVoice not specified, mark manual lock
           if (anim.startAtSecond !== undefined) {
             if (anim.startAtSecond === 0) {
               element.animation.syncWithVoice = true;
@@ -1578,13 +970,11 @@ export const useStudioStore = create<StudioState>()(
       set((state) => {
         const scene = state.project.scenes.find((s) => s.id === state.project.activeSceneId);
         if (scene) {
-          // If deleted element is a container, un-nest all its children
           scene.elements.forEach((e) => {
             if (e.parentId === id) {
               e.parentId = undefined;
             }
           });
-          // Also remove from any parent container childIds
           scene.elements.forEach((e) => {
             if (e.type === 'container_box' && Array.isArray(e.data?.childIds)) {
               e.data.childIds = e.data.childIds.filter((cid: string) => cid !== id);
@@ -1701,7 +1091,6 @@ export const useStudioStore = create<StudioState>()(
             break;
         }
 
-        // Strict frame containment guarantee
         element.geometry.x = Math.max(0, Math.min(Math.max(0, W - ew), element.geometry.x));
         element.geometry.y = Math.max(0, Math.min(Math.max(0, H - eh), element.geometry.y));
       });
@@ -1764,7 +1153,6 @@ export const useStudioStore = create<StudioState>()(
         const scene = state.project.scenes.find((s) => s.id === state.project.activeSceneId);
         const element = scene?.elements.find((e) => e.id === id);
         if (element) {
-          // When linked, normalize all 4 sides to the same value so panel inputs stay in sync
           const normalized = borderWidths.linked
             ? { top: borderWidths.top, right: borderWidths.top, bottom: borderWidths.top, left: borderWidths.top, linked: true }
             : borderWidths;
@@ -1946,131 +1334,15 @@ export const useStudioStore = create<StudioState>()(
     // Educational Scene Templates
     applyTemplate: (templateId) => {
       const activeSceneId = get().project.activeSceneId;
+      const tpl = EDUCATIONAL_TEMPLATES[templateId];
+      if (!tpl) return;
 
       set((state) => {
         const scene = state.project.scenes.find((s) => s.id === activeSceneId);
         if (!scene) return;
 
-        if (templateId === 'hardware_anatomy') {
-          scene.name = 'Hardware Anatomy Layout';
-          scene.elements = [
-            {
-              id: 'elem_hw_hero',
-              type: 'hero_text',
-              layoutVariant: 'simple_title_block',
-              geometry: { x: 120, y: 160, width: 840, height: 160, zIndex: 10 },
-              style: { ...BASE_STYLE_COPY, borderColor: 'rgba(34, 211, 238, 0.4)' },
-              typography: { ...BASE_TYPO_COPY, fontSize: 36, fontWeight: '700' },
-              animation: { ...BASE_ANIM_COPY, stepOrder: 1, startAtSecond: 0, entrance: 'fadeIn' },
-              data: {
-                text: 'হার্ডওয়্যার আর্কিটেকচার ও [পিনআউট] অ্যানাটমি',
-                highlightWords: 'পিনআউট',
-                highlightColor: '#22d3ee'
-              }
-            },
-            {
-              id: 'elem_hw_badge',
-              type: 'basic_badge',
-              geometry: { x: 120, y: 340, width: 220, height: 48, zIndex: 10 },
-              style: { ...BASE_STYLE_COPY, padding: 8, borderRadius: 999 },
-              typography: { ...BASE_TYPO_COPY, fontSize: 13 },
-              animation: { ...BASE_ANIM_COPY, stepOrder: 2, startAtSecond: 1.5, entrance: 'scaleSpring' },
-              data: { text: 'ATmega328P // 16 MHz' }
-            },
-            {
-              id: 'elem_hw_text',
-              type: 'basic_text',
-              geometry: { x: 120, y: 410, width: 840, height: 140, zIndex: 10 },
-              style: { ...BASE_STYLE_COPY, padding: 18 },
-              typography: { ...BASE_TYPO_COPY, fontSize: 20 },
-              animation: { ...BASE_ANIM_COPY, stepOrder: 3, startAtSecond: 3.0, entrance: 'slideUp' },
-              data: {
-                text: '১৪টি ডিজিটাল I/O পিন (যার মধ্যে ৬টিতে PWM সাপোর্ট) এবং ৬টি অ্যানালগ ইনপুট পিন (১০-বিট ADC)।'
-              }
-            }
-          ];
-        } else if (templateId === 'concept_comparison') {
-          scene.name = 'Concept Comparison Layout';
-          scene.elements = [
-            {
-              id: 'elem_comp_hero',
-              type: 'hero_text',
-              layoutVariant: 'simple_title_block',
-              geometry: { x: 120, y: 160, width: 840, height: 160, zIndex: 10 },
-              style: { ...BASE_STYLE_COPY, borderColor: 'rgba(168, 85, 247, 0.4)' },
-              typography: { ...BASE_TYPO_COPY, fontSize: 36, fontWeight: '700' },
-              animation: { ...BASE_ANIM_COPY, stepOrder: 1, startAtSecond: 0, entrance: 'fadeIn' },
-              data: {
-                text: 'কম্বিনেশনাল বনাম [সিকোয়েনশিয়াল] লজিক সার্কিট',
-                highlightWords: 'সিকোয়েনশিয়াল',
-                highlightColor: '#a855f7'
-              }
-            },
-            {
-              id: 'elem_comp_box',
-              type: 'container_box',
-              layoutVariant: 'grid_2col',
-              geometry: { x: 120, y: 340, width: 900, height: 320, zIndex: 5 },
-              style: { ...BASE_STYLE_COPY, padding: 20, bgOpacity: 0.6 },
-              typography: { ...BASE_TYPO_COPY },
-              animation: { ...BASE_ANIM_COPY, stepOrder: 2, startAtSecond: 2.0, entrance: 'fadeIn' },
-              data: { gap: 16, childIds: ['elem_comp_sub1', 'elem_comp_sub2'] }
-            },
-            {
-              id: 'elem_comp_sub1',
-              type: 'basic_text',
-              parentId: 'elem_comp_box',
-              geometry: { x: 140, y: 360, width: 410, height: 260, zIndex: 10 },
-              style: { ...BASE_STYLE_COPY, padding: 18, borderColor: 'rgba(56, 189, 248, 0.3)' },
-              typography: { ...BASE_TYPO_COPY, fontSize: 20 },
-              animation: { ...BASE_ANIM_COPY, stepOrder: 3, startAtSecond: 3.5, entrance: 'slideLeft' },
-              data: {
-                text: 'কম্বিনেশনাল সার্কিট: আউটপুট কেবল বর্তমান ইনপুটের ওপর নির্ভর করে। কোনো মেমোরি এলিমেন্ট থাকে না।'
-              }
-            },
-            {
-              id: 'elem_comp_sub2',
-              type: 'basic_text',
-              parentId: 'elem_comp_box',
-              geometry: { x: 570, y: 360, width: 410, height: 260, zIndex: 10 },
-              style: { ...BASE_STYLE_COPY, padding: 18, borderColor: 'rgba(168, 85, 247, 0.3)' },
-              typography: { ...BASE_TYPO_COPY, fontSize: 20 },
-              animation: { ...BASE_ANIM_COPY, stepOrder: 4, startAtSecond: 5.0, entrance: 'slideRight' },
-              data: {
-                text: 'সিকোয়েনশিয়াল সার্কিট: আউটপুট বর্তমান ইনপুট ও পূর্ববর্তী স্টেট উভয়ের ওপর নির্ভর করে।'
-              }
-            }
-          ];
-        } else if (templateId === 'code_walkthrough') {
-          scene.name = 'Code Walkthrough Layout';
-          scene.elements = [
-            {
-              id: 'elem_cw_hero',
-              type: 'hero_text',
-              layoutVariant: 'simple_title_block',
-              geometry: { x: 120, y: 160, width: 840, height: 160, zIndex: 10 },
-              style: { ...BASE_STYLE_COPY, borderColor: 'rgba(56, 189, 248, 0.4)' },
-              typography: { ...BASE_TYPO_COPY, fontSize: 36, fontWeight: '700' },
-              animation: { ...BASE_ANIM_COPY, stepOrder: 1, startAtSecond: 0, entrance: 'fadeIn' },
-              data: {
-                text: 'অবজেক্ট ওরিয়েন্টেড ডিজাইন ও [লজিক সিমুলেশন]',
-                highlightWords: 'লজিক সিমুলেশন',
-                highlightColor: '#38bdf8'
-              }
-            },
-            {
-              id: 'elem_cw_text',
-              type: 'basic_text',
-              geometry: { x: 120, y: 340, width: 840, height: 200, zIndex: 10 },
-              style: { ...BASE_STYLE_COPY, padding: 20 },
-              typography: { ...BASE_TYPO_COPY, fontFamily: 'JetBrains Mono', fontSize: 18 },
-              animation: { ...BASE_ANIM_COPY, stepOrder: 2, startAtSecond: 2.0, entrance: 'fadeIn' },
-              data: {
-                text: 'class LogicGate:\n    def __init__(self, label):\n        self.label = label\n        self.output = None'
-              }
-            }
-          ];
-        }
+        scene.name = tpl.name;
+        scene.elements = JSON.parse(JSON.stringify(tpl.elements));
       });
 
       get().recordHistory();
@@ -2101,37 +1373,3 @@ export const useStudioStore = create<StudioState>()(
     }
   }))
 );
-
-const BASE_STYLE_COPY: ElementStyle = {
-  bgMode: 'solid',
-  bgColor: '#0f172a',
-  bgOpacity: 0.9,
-  backdropBlur: 8,
-  borderWidth: 1.5,
-  borderStyle: 'solid',
-  borderColor: 'rgba(56, 189, 248, 0.4)',
-  borderRadius: 16,
-  padding: 24,
-  glowColor: '#38bdf8',
-  glowIntensity: 8
-};
-
-const BASE_TYPO_COPY: Typography = {
-  fontFamily: 'Kalpurush',
-  fontSize: 22,
-  fontWeight: '500',
-  lineHeight: 1.4,
-  textAlign: 'left',
-  textColor: '#f8fafc'
-};
-
-const BASE_ANIM_COPY: AnimationChoreography = {
-  stepOrder: 1,
-  startAtSecond: 0,
-  entrance: 'fadeIn',
-  duration: 0.8,
-  delay: 0,
-  easing: 'spring',
-  stagger: 0.15,
-  emphasis: 'none'
-};

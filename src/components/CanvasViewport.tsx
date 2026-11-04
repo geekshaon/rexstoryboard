@@ -621,10 +621,12 @@ export const CanvasViewport: React.FC = () => {
           />
         )}
 
-        {/* Safeguard / Title Safe Area Guides (Hidden in Preview) */}
+        {/* Safeguard / Title Safe Area Guides (Hidden in Preview & PNG Export) */}
         {!isPreviewMode && scene.theme.safeGuard?.enabled && scene.theme.safeGuard?.showGuides && (
           <div
-            className="absolute pointer-events-none z-20 border-2 border-dashed border-cyan-400/40 rounded-sm"
+            className="vsss-export-hide vsss-safeguard-guide absolute pointer-events-none z-20 border-2 border-dashed border-cyan-400/40 rounded-sm"
+            data-export-hide="true"
+            data-safeguard-guide="true"
             style={{
               top: `${scene.theme.safeGuard.top}px`,
               left: `${scene.theme.safeGuard.left}px`,
@@ -718,6 +720,7 @@ export const CanvasViewport: React.FC = () => {
                 <div
                   className="w-full h-full relative"
                   data-element-id={element.id}
+                  data-element-type={element.type}
                   onClick={(e) => {
                     if (!isPreviewMode) {
                       e.stopPropagation();

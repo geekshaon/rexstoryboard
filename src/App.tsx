@@ -12,6 +12,7 @@ import { CanvasViewport } from './components/CanvasViewport';
 import { RightSidebar } from './components/RightSidebar';
 import { BottomBar } from './components/BottomBar';
 import { FullSpecModal } from './components/FullSpecModal';
+import { FigmaShowcaseView } from './components/FigmaShowcaseView';
 
 export default function App() {
   const [isFullSpecModalOpen, setIsFullSpecModalOpen] = useState(false);
@@ -30,6 +31,15 @@ export default function App() {
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  const isShowcase =
+    typeof window !== 'undefined' &&
+    (new URLSearchParams(window.location.search).get('view') === 'showcase' ||
+      new URLSearchParams(window.location.search).get('figma') === 'true');
+
+  if (isShowcase) {
+    return <FigmaShowcaseView />;
+  }
 
   if (!isInitialized) {
     return (

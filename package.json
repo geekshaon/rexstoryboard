@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx scripts/runE2eTests.ts"
+    "test": "tsx scripts/runE2eTests.ts",
+    "test:playwright": "tsx scripts/runPlaywrightTests.ts",
+    "export:figma": "tsx scripts/exportFigmaShowcase.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -29,6 +31,8 @@
     "zustand": "^5.0.16"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -36,7 +40,6 @@
     "esbuild": "^0.28.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
-    "typescript": "^7.0.2",
-    "@types/express": "^4.17.21"
+    "typescript": "^7.0.2"
   }
 }

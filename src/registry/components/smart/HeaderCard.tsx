@@ -1,17 +1,98 @@
 import React from 'react';
 import { PanelTop, Sparkles } from 'lucide-react';
-import { SceneElement } from '../../../types/studio';
+import { SceneElement, FontFamilyType } from '../../../types/studio';
 import { ComponentDefinition } from '../../types';
 import { COMPONENT_DEFAULTS } from '../../componentDefaults';
 import { resolveElementStyles, getSubPartStyle, getFontFamilyCss } from '../../styleUtils';
 
+interface AccentStyle {
+  color: string;
+  textColor?: string;
+  fontSize?: number;
+  fontWeight?: string;
+  fontFamily?: FontFamilyType;
+  lineHeight?: number;
+  glow?: number;
+  bgColor?: string;
+  borderRadius?: number;
+  borderColor?: string;
+  borderWidth?: number;
+}
+
+/**
+ * Helper to parse and render text with specific words highlighted.
+ */
+function renderHighlightedText(text: string | undefined, accentStyle: AccentStyle): React.ReactNode {
+  if (!text) return null;
+  const hasBrackets = /\[(.*?)\]|\{(.*?)\}/.test(text);
+  if (!hasBrackets) return text;
+
+  const isPill = Boolean(accentStyle.bgColor);
+  const glowShadow = (accentStyle.glow ?? 0) > 0 ? `0 0 ${accentStyle.glow}px ${accentStyle.color}80` : 'none';
+
+  const spanStyle: React.CSSProperties = {
+    color: accentStyle.color,
+    fontSize: accentStyle.fontSize ? `${accentStyle.fontSize}px` : undefined,
+    fontWeight: accentStyle.fontWeight || '700',
+    fontFamily: accentStyle.fontFamily ? getFontFamilyCss(accentStyle.fontFamily) : undefined,
+    lineHeight: isPill ? accentStyle.lineHeight : undefined,
+    textShadow: glowShadow,
+    backgroundColor: accentStyle.bgColor || undefined,
+    borderRadius: accentStyle.borderRadius !== undefined ? `${accentStyle.borderRadius}px` : (isPill ? '6px' : undefined),
+    border: (accentStyle.borderColor && accentStyle.borderWidth) ? `${accentStyle.borderWidth}px solid ${accentStyle.borderColor}` : undefined,
+    padding: isPill ? '2px 8px' : undefined,
+    display: isPill ? 'inline-block' : 'inline',
+    transition: 'all 0.15s ease'
+  };
+
+  const parts = text.split(/(\[.*?\]|\{.*?\})/g);
+  return parts.map((part, idx) => {
+    if ((part.startsWith('[') && part.endsWith(']')) || (part.startsWith('{') && part.endsWith('}'))) {
+      const content = part.slice(1, -1);
+      return (
+        <span key={idx} style={spanStyle}>
+          {content}
+        </span>
+      );
+    }
+    return <span key={idx}>{part}</span>;
+  });
+}
+
 export const HeaderCardRenderer: React.FC<{ element: SceneElement; isSelected: boolean }> = ({ element }) => {
-  const { data, layoutVariant = 'floating_pill' } = element;
+  const { data, layoutVariant = 'floating_pill', style } = element;
   const containerStyle = resolveElementStyles(element);
 
   const titleSub = getSubPartStyle(element, 'title');
   const bodySub = getSubPartStyle(element, 'body');
   const badgeSub = getSubPartStyle(element, 'badge');
+  const accentSub = getSubPartStyle(element, 'accent');
+
+  // Accent styling resolution
+  const accentColor =
+    accentSub.textColor ||
+    accentSub.typography?.highlightColor ||
+    accentSub.typography?.textColor ||
+    (data.accentColor as string | undefined) ||
+    '#38bdf8';
+
+  const accentGlow =
+    accentSub.typography?.highlightGlow ??
+    accentSub.glowIntensity ??
+    0;
+
+  const accentStyle: AccentStyle = {
+    color: accentColor,
+    fontSize: accentSub.typography?.fontSize,
+    fontWeight: accentSub.typography?.fontWeight,
+    fontFamily: accentSub.typography?.fontFamily as FontFamilyType | undefined,
+    lineHeight: accentSub.typography?.lineHeight,
+    glow: accentGlow,
+    bgColor: accentSub.bgColor,
+    borderRadius: accentSub.borderRadius,
+    borderColor: accentSub.borderColor,
+    borderWidth: accentSub.borderWidth
+  };
 
   // Title styling
   const titleColor =
@@ -22,6 +103,7 @@ export const HeaderCardRenderer: React.FC<{ element: SceneElement; isSelected: b
   const titleFontFamily = titleSub.typography?.fontFamily || element.typography.fontFamily;
   const titleFontSize = titleSub.typography?.fontSize ?? element.typography.fontSize ?? 22;
   const titleFontWeight = titleSub.typography?.fontWeight || element.typography.fontWeight || '700';
+  const titleTextAlign = titleSub.typography?.textAlign || element.typography.textAlign || 'left';
 
   // Subtitle styling
   const subtitleColor =
@@ -31,6 +113,8 @@ export const HeaderCardRenderer: React.FC<{ element: SceneElement; isSelected: b
   const subtitleFontFamily = bodySub.typography?.fontFamily || titleFontFamily;
   const subtitleFontSize =
     bodySub.typography?.fontSize ?? Math.max(13, Math.round(titleFontSize * 0.65));
+  const subtitleFontWeight = bodySub.typography?.fontWeight || '400';
+  const subtitleTextAlign = bodySub.typography?.textAlign || element.typography.textAlign || 'left';
 
   // Badge styling
   const badgeBg =
@@ -39,26 +123,40 @@ export const HeaderCardRenderer: React.FC<{ element: SceneElement; isSelected: b
     'rgba(56, 189, 248, 0.15)';
   const badgeTextColor =
     badgeSub.textColor ||
+    badgeSub.typography?.textColor ||
     (data.badgeTextColor as string | undefined) ||
     '#38bdf8';
   const badgeBorderColor =
     badgeSub.borderColor ||
     `${badgeTextColor}40`;
+  const badgeBorderWidth = badgeSub.borderWidth ?? 1;
+  const badgeBorderRadius = badgeSub.borderRadius ?? 9999;
+  const badgeFontSize = badgeSub.typography?.fontSize ?? 12;
+  const badgeFontWeight = badgeSub.typography?.fontWeight || '600';
 
-  const showSubtitle = data.showSubtitle !== false && Boolean(data.subtitle);
+  const showSubtitle = data.showSubtitle !== false && Boolean(data.subtitle) && layoutVariant !== 'minimal_headline';
   const showBadge = data.showBadge !== false && Boolean(data.badge) && layoutVariant !== 'minimal_headline';
 
-  // Specific layout adjustments
   const isTopBar = layoutVariant === 'top_bar';
+
+  // Content Flow Alignment
+  const verticalAlign = style.verticalAlign || 'center';
+  const justifyClass =
+    verticalAlign === 'top'
+      ? 'items-start'
+      : verticalAlign === 'bottom'
+      ? 'items-end'
+      : 'items-center';
 
   return (
     <div
-      className={`w-full h-full flex items-center justify-between select-none transition-all duration-150 ${
+      className={`w-full h-full flex ${justifyClass} justify-between select-none transition-all duration-150 ${
         isTopBar ? 'border-b' : 'shadow-xl'
       }`}
       style={{
         ...containerStyle,
-        borderRadius: isTopBar ? '0px' : containerStyle.borderRadius
+        borderRadius: isTopBar ? '0px' : containerStyle.borderRadius,
+        borderBottomWidth: isTopBar ? `${Math.max(1, parseInt(containerStyle.borderBottomWidth || '1', 10))}px` : containerStyle.borderBottomWidth
       }}
     >
       {/* Left Column: Title & Subtitle */}
@@ -69,10 +167,11 @@ export const HeaderCardRenderer: React.FC<{ element: SceneElement; isSelected: b
             fontFamily: getFontFamilyCss(titleFontFamily),
             fontSize: `${titleFontSize}px`,
             fontWeight: titleFontWeight,
-            color: titleColor
+            color: titleColor,
+            textAlign: titleTextAlign
           }}
         >
-          {data.title || 'প্রধান শিরোনাম'}
+          {renderHighlightedText(data.title || 'প্রধান শিরোনাম', accentStyle)}
         </span>
 
         {showSubtitle && (
@@ -83,10 +182,17 @@ export const HeaderCardRenderer: React.FC<{ element: SceneElement; isSelected: b
               style={{
                 fontFamily: getFontFamilyCss(subtitleFontFamily),
                 fontSize: `${subtitleFontSize}px`,
-                color: subtitleColor
+                fontWeight: subtitleFontWeight,
+                color: subtitleColor,
+                textAlign: subtitleTextAlign
               }}
             >
-              {data.subtitle}
+              {renderHighlightedText(data.subtitle, {
+                ...accentStyle,
+                fontSize: accentStyle.fontSize
+                  ? Math.min(accentStyle.fontSize, Math.round(subtitleFontSize * 1.25))
+                  : undefined
+              })}
             </span>
           </>
         )}
@@ -96,11 +202,17 @@ export const HeaderCardRenderer: React.FC<{ element: SceneElement; isSelected: b
       {showBadge && (
         <div className="shrink-0">
           <span
-            className="text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wider inline-flex items-center gap-1.5 border"
+            className="uppercase tracking-wider inline-flex items-center gap-1.5"
             style={{
+              fontSize: `${badgeFontSize}px`,
+              fontWeight: badgeFontWeight,
               backgroundColor: badgeBg,
               color: badgeTextColor,
-              borderColor: badgeBorderColor
+              borderColor: badgeBorderColor,
+              borderWidth: `${badgeBorderWidth}px`,
+              borderStyle: 'solid',
+              borderRadius: `${badgeBorderRadius}px`,
+              padding: '4px 12px'
             }}
           >
             <Sparkles className="w-3 h-3" />

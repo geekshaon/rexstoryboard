@@ -7,11 +7,18 @@ import {
   Bookmark,
   Check,
   ClipboardCopy,
-  Box
+  Box,
+  Layers,
+  Download
 } from 'lucide-react';
 import { useStudioStore } from '../store/studioStore';
 import { getComponentDefinition } from '../registry/componentRegistry';
 import { generateSceneSpec } from '../utils/specGenerator';
+import {
+  generateIndividualComponentHtml,
+  downloadIndividualComponentHtml,
+  copyIndividualComponentHtml
+} from '../utils/figmaHtmlExporter';
 import { ContentTab } from './inspector/ContentTab';
 import { StyleTab } from './inspector/StyleTab';
 import { AdvancedTab } from './inspector/AdvancedTab';
@@ -25,6 +32,7 @@ export const RightSidebar: React.FC = () => {
   const [savePresetModal, setSavePresetModal] = useState(false);
   const [presetNameInput, setPresetNameInput] = useState('');
   const [copiedSpec, setCopiedSpec] = useState(false);
+  const [copiedFigmaHtml, setCopiedFigmaHtml] = useState(false);
 
   const activeSceneId = useStudioStore((s) => s.project.activeSceneId);
   const scene = useStudioStore((s) => s.project.scenes.find((sc) => sc.id === activeSceneId));
@@ -51,6 +59,23 @@ export const RightSidebar: React.FC = () => {
     await navigator.clipboard.writeText(liveSceneSpec);
     setCopiedSpec(true);
     setTimeout(() => setCopiedSpec(false), 2000);
+  };
+
+  const handleCopyFigmaHtml = async () => {
+    if (!element) return;
+    const ok = await copyIndividualComponentHtml(element, def, scene?.theme);
+    if (ok) {
+      setCopiedFigmaHtml(true);
+      setTimeout(() => setCopiedFigmaHtml(false), 2500);
+    } else {
+      downloadIndividualComponentHtml(element, def, scene?.theme);
+      alert('Clipboard write was restricted by your browser. The component HTML file has been downloaded instead!');
+    }
+  };
+
+  const handleDownloadFigmaHtml = () => {
+    if (!element) return;
+    downloadIndividualComponentHtml(element, def, scene?.theme);
   };
 
   // Available containers in current scene for parent assignment
@@ -89,6 +114,29 @@ export const RightSidebar: React.FC = () => {
 
         {element && (
           <div className="flex items-center gap-1">
+            <button
+              onClick={handleCopyFigmaHtml}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold transition-all cursor-pointer border ${
+                copiedFigmaHtml
+                  ? 'bg-emerald-950 text-emerald-300 border-emerald-500/50'
+                  : 'bg-slate-900 text-cyan-400 border-slate-700 hover:bg-slate-850 hover:border-cyan-500/50'
+              }`}
+              title="Copy component HTML for Figma (Paste directly into html.to.design plugin)"
+            >
+              {copiedFigmaHtml ? (
+                <Check className="w-3 h-3 text-emerald-400" />
+              ) : (
+                <Layers className="w-3 h-3 text-cyan-400" />
+              )}
+              <span>{copiedFigmaHtml ? 'Copied!' : 'Figma'}</span>
+            </button>
+            <button
+              onClick={handleDownloadFigmaHtml}
+              className="p-1.5 text-slate-400 hover:text-cyan-400 hover:bg-slate-800/80 rounded transition-colors cursor-pointer"
+              title="Download standalone .html file for Figma"
+            >
+              <Download className="w-3.5 h-3.5" />
+            </button>
             <button
               onClick={() => setSavePresetModal(true)}
               className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800/80 rounded transition-colors cursor-pointer"
@@ -169,6 +217,7 @@ export const RightSidebar: React.FC = () => {
               {/* Elementor 3 Tabs: Content, Style, Advanced */}
               <div className="grid grid-cols-3 border-b border-slate-800 bg-slate-950 text-xs">
                 <button
+                  data-testid="tab-content"
                   onClick={() => setElementorTab('content')}
                   className={`py-2 text-center font-medium transition-colors cursor-pointer border-b-2 ${
                     elementorTab === 'content'
@@ -179,6 +228,7 @@ export const RightSidebar: React.FC = () => {
                   📝 Content
                 </button>
                 <button
+                  data-testid="tab-style"
                   onClick={() => setElementorTab('style')}
                   className={`py-2 text-center font-medium transition-colors cursor-pointer border-b-2 ${
                     elementorTab === 'style'
@@ -189,6 +239,7 @@ export const RightSidebar: React.FC = () => {
                   🎨 Style
                 </button>
                 <button
+                  data-testid="tab-advanced"
                   onClick={() => setElementorTab('advanced')}
                   className={`py-2 text-center font-medium transition-colors cursor-pointer border-b-2 ${
                     elementorTab === 'advanced'

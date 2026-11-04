@@ -1,16 +1,97 @@
 import React from 'react';
 import { PanelBottom } from 'lucide-react';
-import { SceneElement } from '../../../types/studio';
+import { SceneElement, FontFamilyType } from '../../../types/studio';
 import { ComponentDefinition } from '../../types';
 import { COMPONENT_DEFAULTS } from '../../componentDefaults';
 import { resolveElementStyles, getSubPartStyle, getFontFamilyCss } from '../../styleUtils';
 
+interface AccentStyle {
+  color: string;
+  textColor?: string;
+  fontSize?: number;
+  fontWeight?: string;
+  fontFamily?: FontFamilyType;
+  lineHeight?: number;
+  glow?: number;
+  bgColor?: string;
+  borderRadius?: number;
+  borderColor?: string;
+  borderWidth?: number;
+}
+
+/**
+ * Helper to parse and render text with specific words highlighted.
+ */
+function renderHighlightedText(text: string | undefined, accentStyle: AccentStyle): React.ReactNode {
+  if (!text) return null;
+  const hasBrackets = /\[(.*?)\]|\{(.*?)\}/.test(text);
+  if (!hasBrackets) return text;
+
+  const isPill = Boolean(accentStyle.bgColor);
+  const glowShadow = (accentStyle.glow ?? 0) > 0 ? `0 0 ${accentStyle.glow}px ${accentStyle.color}80` : 'none';
+
+  const spanStyle: React.CSSProperties = {
+    color: accentStyle.color,
+    fontSize: accentStyle.fontSize ? `${accentStyle.fontSize}px` : undefined,
+    fontWeight: accentStyle.fontWeight || '700',
+    fontFamily: accentStyle.fontFamily ? getFontFamilyCss(accentStyle.fontFamily) : undefined,
+    lineHeight: isPill ? accentStyle.lineHeight : undefined,
+    textShadow: glowShadow,
+    backgroundColor: accentStyle.bgColor || undefined,
+    borderRadius: accentStyle.borderRadius !== undefined ? `${accentStyle.borderRadius}px` : (isPill ? '6px' : undefined),
+    border: (accentStyle.borderColor && accentStyle.borderWidth) ? `${accentStyle.borderWidth}px solid ${accentStyle.borderColor}` : undefined,
+    padding: isPill ? '2px 8px' : undefined,
+    display: isPill ? 'inline-block' : 'inline',
+    transition: 'all 0.15s ease'
+  };
+
+  const parts = text.split(/(\[.*?\]|\{.*?\})/g);
+  return parts.map((part, idx) => {
+    if ((part.startsWith('[') && part.endsWith(']')) || (part.startsWith('{') && part.endsWith('}'))) {
+      const content = part.slice(1, -1);
+      return (
+        <span key={idx} style={spanStyle}>
+          {content}
+        </span>
+      );
+    }
+    return <span key={idx}>{part}</span>;
+  });
+}
+
 export const FooterCardRenderer: React.FC<{ element: SceneElement; isSelected: boolean }> = ({ element }) => {
-  const { data, layoutVariant = 'floating_pill' } = element;
+  const { data, layoutVariant = 'floating_pill', style } = element;
   const containerStyle = resolveElementStyles(element);
 
   const bodySub = getSubPartStyle(element, 'body');
   const badgeSub = getSubPartStyle(element, 'badge');
+  const accentSub = getSubPartStyle(element, 'accent');
+
+  // Accent styling resolution
+  const accentColor =
+    accentSub.textColor ||
+    accentSub.typography?.highlightColor ||
+    accentSub.typography?.textColor ||
+    (data.noteColor as string | undefined) ||
+    '#38bdf8';
+
+  const accentGlow =
+    accentSub.typography?.highlightGlow ??
+    accentSub.glowIntensity ??
+    0;
+
+  const accentStyle: AccentStyle = {
+    color: accentColor,
+    fontSize: accentSub.typography?.fontSize,
+    fontWeight: accentSub.typography?.fontWeight,
+    fontFamily: accentSub.typography?.fontFamily as FontFamilyType | undefined,
+    lineHeight: accentSub.typography?.lineHeight,
+    glow: accentGlow,
+    bgColor: accentSub.bgColor,
+    borderRadius: accentSub.borderRadius,
+    borderColor: accentSub.borderColor,
+    borderWidth: accentSub.borderWidth
+  };
 
   // Note typography & color
   const noteColor =
@@ -21,6 +102,7 @@ export const FooterCardRenderer: React.FC<{ element: SceneElement; isSelected: b
   const noteFontFamily = bodySub.typography?.fontFamily || element.typography.fontFamily;
   const noteFontSize = bodySub.typography?.fontSize ?? element.typography.fontSize ?? 16;
   const noteFontWeight = bodySub.typography?.fontWeight || element.typography.fontWeight || '500';
+  const noteTextAlign = bodySub.typography?.textAlign || element.typography.textAlign || 'left';
 
   // Progress tag styling
   const progressColor =
@@ -30,35 +112,50 @@ export const FooterCardRenderer: React.FC<{ element: SceneElement; isSelected: b
     '#94a3b8';
   const progressBg = badgeSub.bgColor || 'rgba(15, 23, 42, 0.8)';
   const progressBorder = badgeSub.borderColor || 'rgba(51, 65, 85, 0.7)';
+  const progressBorderWidth = badgeSub.borderWidth ?? 1;
+  const progressBorderRadius = badgeSub.borderRadius ?? 6;
+  const progressFontSize = badgeSub.typography?.fontSize ?? 12;
+  const progressFontWeight = badgeSub.typography?.fontWeight || '600';
 
   const isBottomBar = layoutVariant === 'bottom_bar';
   const isProgressBar = layoutVariant === 'progress_bar';
   const showProgress = data.showProgress !== false && Boolean(data.progress);
   const progressPercent = typeof data.progressPercent === 'number' ? data.progressPercent : 40;
 
+  // Content Flow Alignment
+  const verticalAlign = style.verticalAlign || 'center';
+  const justifyClass =
+    verticalAlign === 'top'
+      ? 'justify-start'
+      : verticalAlign === 'bottom'
+      ? 'justify-end'
+      : 'justify-center';
+
   return (
     <div
-      className={`w-full h-full flex flex-col justify-center select-none transition-all duration-150 ${
+      className={`w-full h-full flex flex-col ${justifyClass} select-none transition-all duration-150 ${
         isBottomBar ? 'border-t' : 'shadow-xl'
       }`}
       style={{
         ...containerStyle,
-        borderRadius: isBottomBar ? '0px' : containerStyle.borderRadius
+        borderRadius: isBottomBar ? '0px' : containerStyle.borderRadius,
+        borderTopWidth: isBottomBar ? `${Math.max(1, parseInt(containerStyle.borderTopWidth || '1', 10))}px` : containerStyle.borderTopWidth
       }}
     >
       <div className="flex items-center justify-between w-full">
         {/* Left: Footer Note / Formula / Copyright */}
         <div className="flex items-center gap-2 min-w-0 flex-1 mr-3">
           <span
-            className="truncate select-none font-medium"
+            className="truncate select-none w-full"
             style={{
               fontFamily: getFontFamilyCss(noteFontFamily),
               fontSize: `${noteFontSize}px`,
               fontWeight: noteFontWeight,
-              color: noteColor
+              color: noteColor,
+              textAlign: noteTextAlign
             }}
           >
-            {data.note || 'পাদটীকা বা প্রয়োজনীয় নোট'}
+            {renderHighlightedText(data.note || 'পাদটীকা বা প্রয়োজনীয় নোট', accentStyle)}
           </span>
         </div>
 
@@ -66,11 +163,17 @@ export const FooterCardRenderer: React.FC<{ element: SceneElement; isSelected: b
         {showProgress && (
           <div className="shrink-0 flex items-center gap-2">
             <span
-              className="text-xs font-mono tracking-wider uppercase px-2.5 py-1 rounded border"
+              className="font-mono tracking-wider uppercase inline-flex items-center"
               style={{
+                fontSize: `${progressFontSize}px`,
+                fontWeight: progressFontWeight,
                 color: progressColor,
                 backgroundColor: progressBg,
-                borderColor: progressBorder
+                borderColor: progressBorder,
+                borderWidth: `${progressBorderWidth}px`,
+                borderStyle: 'solid',
+                borderRadius: `${progressBorderRadius}px`,
+                padding: '4px 10px'
               }}
             >
               {data.progress}

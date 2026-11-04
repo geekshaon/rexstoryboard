@@ -1,18 +1,55 @@
 import React from 'react';
 import { MessageSquareText, Sparkles, Quote, CheckCircle2 } from 'lucide-react';
-import { SceneElement } from '../../../types/studio';
+import { SceneElement, FontFamilyType } from '../../../types/studio';
 import { ComponentDefinition } from '../../types';
 import { COMPONENT_DEFAULTS } from '../../componentDefaults';
 import { resolveElementStyles, getSubPartStyle, getFontFamilyCss } from '../../styleUtils';
 import { useStudioStore } from '../../../store/studioStore';
 
+interface AccentStyle {
+  color: string;
+  textColor?: string;
+  fontSize?: number;
+  fontWeight?: string;
+  fontFamily?: FontFamilyType;
+  lineHeight?: number;
+  glow?: number;
+  bgColor?: string;
+  borderRadius?: number;
+  borderColor?: string;
+  borderWidth?: number;
+}
+
 /**
  * Helper to render text with optional bracket highlight syntax
  */
-function renderHighlightedText(text: string, highlightColor: string): React.ReactNode {
+function renderHighlightedText(text: string, accentStyle: AccentStyle | string): React.ReactNode {
   if (!text) return null;
   const hasBrackets = /\[(.*?)\]|\{(.*?)\}/.test(text);
   if (!hasBrackets) return text;
+
+  const styleObj: AccentStyle =
+    typeof accentStyle === 'string'
+      ? { color: accentStyle }
+      : accentStyle;
+
+  const isPill = Boolean(styleObj.bgColor);
+  const glowShadow = (styleObj.glow ?? 0) > 0 ? `0 0 ${styleObj.glow}px ${styleObj.color}80` : 'none';
+
+  const spanStyle: React.CSSProperties = {
+    color: styleObj.color,
+    fontSize: styleObj.fontSize ? `${styleObj.fontSize}px` : undefined,
+    fontWeight: styleObj.fontWeight || '700',
+    fontFamily: styleObj.fontFamily ? getFontFamilyCss(styleObj.fontFamily) : undefined,
+    lineHeight: isPill ? styleObj.lineHeight : undefined,
+    textShadow: glowShadow,
+    backgroundColor: styleObj.bgColor || undefined,
+    borderRadius: styleObj.borderRadius !== undefined ? `${styleObj.borderRadius}px` : (isPill ? '6px' : undefined),
+    border: (styleObj.borderColor && styleObj.borderWidth) ? `${styleObj.borderWidth}px solid ${styleObj.borderColor}` : undefined,
+    padding: isPill ? '2px 8px' : undefined,
+    display: isPill ? 'inline-block' : 'inline',
+    transition: 'all 0.15s ease'
+  };
 
   const parts = text.split(/(\[.*?\]|\{.*?\})/g);
   return parts.map((part, idx) => {
@@ -21,8 +58,7 @@ function renderHighlightedText(text: string, highlightColor: string): React.Reac
       return (
         <span
           key={idx}
-          className="font-bold inline-block"
-          style={{ color: highlightColor }}
+          style={spanStyle}
         >
           {content}
         </span>
@@ -33,7 +69,7 @@ function renderHighlightedText(text: string, highlightColor: string): React.Reac
 }
 
 export const SubtitleCaptionRenderer: React.FC<{ element: SceneElement; isSelected: boolean }> = ({ element }) => {
-  const { data, layoutVariant = 'callout_quote' } = element;
+  const { data, layoutVariant = 'callout_quote', style } = element;
   const containerStyle = resolveElementStyles(element);
 
   const titleSub = getSubPartStyle(element, 'title');
@@ -41,12 +77,31 @@ export const SubtitleCaptionRenderer: React.FC<{ element: SceneElement; isSelect
   const badgeSub = getSubPartStyle(element, 'badge');
   const accentSub = getSubPartStyle(element, 'accent');
 
-  // Accent color
+  // Accent color & glow
   const accentColor =
     accentSub.textColor ||
     accentSub.typography?.highlightColor ||
+    accentSub.typography?.textColor ||
     (data.accentColor as string | undefined) ||
     '#38bdf8';
+
+  const accentGlow =
+    accentSub.typography?.highlightGlow ??
+    accentSub.glowIntensity ??
+    (typeof data.accentGlow === 'number' ? data.accentGlow : 0);
+
+  const accentStyle: AccentStyle = {
+    color: accentColor,
+    fontSize: accentSub.typography?.fontSize,
+    fontWeight: accentSub.typography?.fontWeight,
+    fontFamily: accentSub.typography?.fontFamily as FontFamilyType | undefined,
+    lineHeight: accentSub.typography?.lineHeight,
+    glow: accentGlow,
+    bgColor: accentSub.bgColor,
+    borderRadius: accentSub.borderRadius,
+    borderColor: accentSub.borderColor,
+    borderWidth: accentSub.borderWidth
+  };
 
   // Title styling
   const titleColor =
@@ -58,7 +113,7 @@ export const SubtitleCaptionRenderer: React.FC<{ element: SceneElement; isSelect
   const titleFontSize = titleSub.typography?.fontSize ?? element.typography.fontSize ?? 22;
   const titleFontWeight = titleSub.typography?.fontWeight || element.typography.fontWeight || '700';
   const titleLineHeight = titleSub.typography?.lineHeight ?? element.typography.lineHeight ?? 1.3;
-  const textAlign = titleSub.typography?.textAlign || element.typography.textAlign || 'left';
+  const titleTextAlign = titleSub.typography?.textAlign || element.typography.textAlign || 'left';
 
   // Body styling
   const bodyColor =
@@ -70,6 +125,7 @@ export const SubtitleCaptionRenderer: React.FC<{ element: SceneElement; isSelect
     bodySub.typography?.fontSize ?? Math.max(14, Math.round(titleFontSize * 0.75));
   const bodyFontWeight = bodySub.typography?.fontWeight || '400';
   const bodyLineHeight = bodySub.typography?.lineHeight ?? 1.5;
+  const bodyTextAlign = bodySub.typography?.textAlign || element.typography.textAlign || 'left';
 
   // Badge styling
   const badgeBg =
@@ -78,8 +134,14 @@ export const SubtitleCaptionRenderer: React.FC<{ element: SceneElement; isSelect
     `${accentColor}20`;
   const badgeTextColor =
     badgeSub.textColor ||
+    badgeSub.typography?.textColor ||
     (data.badgeTextColor as string | undefined) ||
     accentColor;
+  const badgeBorderColor = badgeSub.borderColor || `${badgeTextColor}40`;
+  const badgeBorderWidth = badgeSub.borderWidth ?? 1;
+  const badgeBorderRadius = badgeSub.borderRadius ?? 9999;
+  const badgeFontSize = badgeSub.typography?.fontSize ?? 11;
+  const badgeFontWeight = badgeSub.typography?.fontWeight || '700';
 
   const showTitle = data.showTitle !== false && Boolean(data.title);
   const showBadge = data.showBadge !== false && Boolean(data.badge);
@@ -89,26 +151,41 @@ export const SubtitleCaptionRenderer: React.FC<{ element: SceneElement; isSelect
   const isPill = layoutVariant === 'caption_pill';
   const isTakeaway = layoutVariant === 'key_takeaway';
 
+  // Vertical alignment
+  const verticalAlign = style.verticalAlign || 'center';
+  const justifyClass =
+    verticalAlign === 'top'
+      ? 'justify-start'
+      : verticalAlign === 'bottom'
+      ? 'justify-end'
+      : 'justify-center';
+
   return (
     <div
-      className={`w-full h-full flex flex-col justify-center select-none transition-all duration-150 relative ${
+      className={`w-full h-full flex flex-col ${justifyClass} select-none transition-all duration-150 relative ${
         isCallout ? 'border-l-4' : ''
       }`}
       style={{
         ...containerStyle,
-        borderLeftColor: isCallout ? accentColor : containerStyle.borderColor,
-        textAlign
+        borderLeftWidth: isCallout ? `${Math.max(4, parseInt(containerStyle.borderLeftWidth || '4', 10))}px` : containerStyle.borderLeftWidth,
+        borderLeftColor: isCallout ? accentColor : containerStyle.borderColor
       }}
     >
       {/* 1. Header Row (Pill or Icon Badge) */}
       {(isPill || isTakeaway) && showBadge && (
         <div className="flex items-center gap-2 mb-2">
           <span
-            className="text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider inline-flex items-center gap-1.5 border"
+            className="uppercase tracking-wider inline-flex items-center gap-1.5"
             style={{
+              fontSize: `${badgeFontSize}px`,
+              fontWeight: badgeFontWeight,
               backgroundColor: badgeBg,
               color: badgeTextColor,
-              borderColor: `${badgeTextColor}40`
+              borderColor: badgeBorderColor,
+              borderWidth: `${badgeBorderWidth}px`,
+              borderStyle: 'solid',
+              borderRadius: `${badgeBorderRadius}px`,
+              padding: '2px 10px'
             }}
           >
             {isTakeaway ? <CheckCircle2 className="w-3 h-3" /> : <Sparkles className="w-3 h-3" />}
@@ -119,19 +196,20 @@ export const SubtitleCaptionRenderer: React.FC<{ element: SceneElement; isSelect
 
       {/* 2. Main Title / Subtitle Headline */}
       {showTitle && (
-        <div className="flex items-center gap-2 mb-1.5">
+        <div className="flex items-center gap-2 mb-1.5 w-full">
           {isCallout && <Quote className="w-4 h-4 shrink-0 opacity-70" style={{ color: accentColor }} />}
           <h2
-            className="font-bold tracking-tight select-none"
+            className="font-bold tracking-tight select-none w-full"
             style={{
               fontFamily: getFontFamilyCss(titleFontFamily),
               fontSize: `${titleFontSize}px`,
               fontWeight: titleFontWeight,
               lineHeight: titleLineHeight,
-              color: titleColor
+              color: titleColor,
+              textAlign: titleTextAlign
             }}
           >
-            {renderHighlightedText(data.title || '', accentColor)}
+            {renderHighlightedText(data.title || '', accentStyle)}
           </h2>
         </div>
       )}
@@ -139,17 +217,23 @@ export const SubtitleCaptionRenderer: React.FC<{ element: SceneElement; isSelect
       {/* 3. Description / Caption Body */}
       {data.body && (
         <p
-          className="select-none leading-relaxed opacity-95"
+          className="select-none leading-relaxed opacity-95 w-full"
           style={{
             fontFamily: getFontFamilyCss(bodyFontFamily),
             fontSize: `${bodyFontSize}px`,
             fontWeight: bodyFontWeight,
             lineHeight: bodyLineHeight,
             color: bodyColor,
-            whiteSpace: 'pre-wrap'
+            whiteSpace: 'pre-wrap',
+            textAlign: bodyTextAlign
           }}
         >
-          {renderHighlightedText(data.body, accentColor)}
+          {renderHighlightedText(data.body, {
+            ...accentStyle,
+            fontSize: accentStyle.fontSize
+              ? Math.min(accentStyle.fontSize, Math.round(bodyFontSize * 1.25))
+              : undefined
+          })}
         </p>
       )}
     </div>

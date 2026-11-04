@@ -1,10 +1,24 @@
 import React from 'react';
 import { Type, Sparkles } from 'lucide-react';
-import { SceneElement } from '../../../types/studio';
+import { SceneElement, FontFamilyType } from '../../../types/studio';
 import { ComponentDefinition } from '../../types';
 import { COMPONENT_DEFAULTS } from '../../componentDefaults';
 import { resolveElementStyles, getSubPartStyle, getFontFamilyCss } from '../../styleUtils';
 import { useStudioStore } from '../../../store/studioStore';
+
+interface AccentStyle {
+  color: string;
+  textColor?: string;
+  fontSize?: number;
+  fontWeight?: string;
+  fontFamily?: FontFamilyType;
+  lineHeight?: number;
+  glow?: number;
+  bgColor?: string;
+  borderRadius?: number;
+  borderColor?: string;
+  borderWidth?: number;
+}
 
 /**
  * Helper to parse and render text with specific words highlighted.
@@ -15,12 +29,27 @@ import { useStudioStore } from '../../../store/studioStore';
 function renderHighlightedText(
   text: string,
   highlightWords: string | undefined,
-  highlightColor: string,
-  highlightGlow: number = 16
+  accentStyle: AccentStyle
 ): React.ReactNode {
   if (!text) return 'প্রধান শিরোনাম';
 
-  const glowShadow = highlightGlow > 0 ? `0 0 ${highlightGlow}px ${highlightColor}80` : 'none';
+  const isPill = Boolean(accentStyle.bgColor);
+  const glowShadow = (accentStyle.glow ?? 16) > 0 ? `0 0 ${accentStyle.glow}px ${accentStyle.color}80` : 'none';
+
+  const spanStyle: React.CSSProperties = {
+    color: accentStyle.color,
+    fontSize: accentStyle.fontSize ? `${accentStyle.fontSize}px` : undefined,
+    fontWeight: accentStyle.fontWeight || '700',
+    fontFamily: accentStyle.fontFamily ? getFontFamilyCss(accentStyle.fontFamily) : undefined,
+    lineHeight: isPill ? accentStyle.lineHeight : undefined,
+    textShadow: glowShadow,
+    backgroundColor: accentStyle.bgColor || undefined,
+    borderRadius: accentStyle.borderRadius !== undefined ? `${accentStyle.borderRadius}px` : (isPill ? '6px' : undefined),
+    border: (accentStyle.borderColor && accentStyle.borderWidth) ? `${accentStyle.borderWidth}px solid ${accentStyle.borderColor}` : undefined,
+    padding: isPill ? '2px 8px' : undefined,
+    display: isPill ? 'inline-block' : 'inline',
+    transition: 'all 0.15s ease'
+  };
 
   // 1. Bracket syntax: [word] or {word}
   const hasBrackets = /\[(.*?)\]|\{(.*?)\}/.test(text);
@@ -32,11 +61,7 @@ function renderHighlightedText(
         return (
           <span
             key={idx}
-            className="font-extrabold transition-all duration-150 inline-block"
-            style={{
-              color: highlightColor,
-              textShadow: glowShadow
-            }}
+            style={spanStyle}
           >
             {content}
           </span>
@@ -64,11 +89,7 @@ function renderHighlightedText(
           return (
             <span
               key={idx}
-              className="font-extrabold transition-all duration-150 inline-block"
-              style={{
-                color: highlightColor,
-                textShadow: glowShadow
-              }}
+              style={spanStyle}
             >
               {part}
             </span>
@@ -83,24 +104,47 @@ function renderHighlightedText(
 }
 
 export const HeroTextRenderer: React.FC<{ element: SceneElement; isSelected: boolean }> = ({ element }) => {
-  const { data, typography } = element;
+  const { data, typography, style } = element;
   const containerStyle = resolveElementStyles(element);
   const titleSub = getSubPartStyle(element, 'title');
   const bodySub = getSubPartStyle(element, 'body');
+  const accentSub = getSubPartStyle(element, 'accent');
 
-  // Highlight color resolution — single source: typography.highlightColor
-  // data.highlightColor kept as legacy read-only fallback for old saved scenes
+  // Highlight color resolution — single source with hierarchy:
+  // 1. subStyles.accent (user specifically customized Highlight Accent)
+  // 2. subStyles.title (fallback if title set highlight)
+  // 3. typography.highlightColor (global element fallback)
+  // 4. data.highlightColor (legacy data field fallback)
   const highlightColor =
+    accentSub.textColor ||
+    accentSub.typography?.highlightColor ||
+    accentSub.typography?.textColor ||
     titleSub.typography?.highlightColor ||
     typography.highlightColor ||
     (data.highlightColor as string | undefined) ||
     '#38bdf8';
 
   const highlightGlow =
+    accentSub.typography?.highlightGlow ??
+    accentSub.glowIntensity ??
     titleSub.typography?.highlightGlow ??
     typography.highlightGlow ??
     (typeof data.highlightGlow === 'number' ? data.highlightGlow : 16);
 
+  const accentStyle: AccentStyle = {
+    color: highlightColor,
+    fontSize: accentSub.typography?.fontSize,
+    fontWeight: accentSub.typography?.fontWeight,
+    fontFamily: accentSub.typography?.fontFamily as FontFamilyType | undefined,
+    lineHeight: accentSub.typography?.lineHeight,
+    glow: highlightGlow,
+    bgColor: accentSub.bgColor,
+    borderRadius: accentSub.borderRadius,
+    borderColor: accentSub.borderColor,
+    borderWidth: accentSub.borderWidth
+  };
+
+  // Title styling
   const titleColor =
     titleSub.textColor ||
     titleSub.typography?.textColor ||
@@ -109,14 +153,14 @@ export const HeroTextRenderer: React.FC<{ element: SceneElement; isSelected: boo
 
   const effectiveFontFamily = titleSub.typography?.fontFamily || typography.fontFamily;
   const effectiveFontSize = titleSub.typography?.fontSize ?? typography.fontSize;
-  const effectiveFontWeight = titleSub.typography?.fontWeight || typography.fontWeight;
+  const effectiveFontWeight = titleSub.typography?.fontWeight || typography.fontWeight || '700';
   const effectiveLineHeight = titleSub.typography?.lineHeight ?? typography.lineHeight ?? 1.3;
-  const effectiveTextAlign = titleSub.typography?.textAlign || typography.textAlign || 'center';
+  const titleTextAlign = titleSub.typography?.textAlign || typography.textAlign || 'center';
 
   // Subtitle styling resolution
   const hasSubtitle =
-    element.layoutVariant === 'title_with_subtitle' ||
-    (data.subtitle && data.showSubtitle !== false);
+    element.layoutVariant === 'title_with_subtitle' &&
+    (data.subtitle !== undefined ? Boolean(data.subtitle.trim()) : true);
 
   const subtitleColor =
     bodySub.textColor ||
@@ -130,14 +174,30 @@ export const HeroTextRenderer: React.FC<{ element: SceneElement; isSelected: boo
   const subtitleFontWeight = bodySub.typography?.fontWeight || '400';
   const subtitleLineHeight = bodySub.typography?.lineHeight ?? 1.4;
   const subtitleFontFamily = bodySub.typography?.fontFamily || effectiveFontFamily;
+  const subtitleTextAlign = bodySub.typography?.textAlign || typography.textAlign || 'center';
+
+  // Content Flow Alignment
+  const verticalAlign = style.verticalAlign || 'center';
+  const horizontalAlign = style.horizontalAlign || 'center';
+
+  const justifyClass =
+    verticalAlign === 'top'
+      ? 'justify-start'
+      : verticalAlign === 'bottom'
+      ? 'justify-end'
+      : 'justify-center';
+
+  const itemsClass =
+    horizontalAlign === 'left'
+      ? 'items-start'
+      : horizontalAlign === 'right'
+      ? 'items-end'
+      : 'items-center';
 
   return (
     <div
-      className="w-full h-full flex flex-col justify-center transition-all duration-150"
-      style={{
-        ...containerStyle,
-        textAlign: effectiveTextAlign
-      }}
+      className={`w-full h-full flex flex-col ${justifyClass} ${itemsClass} transition-all duration-150`}
+      style={containerStyle}
     >
       <h1
         className="font-bold tracking-tight leading-tight select-none w-full"
@@ -147,10 +207,10 @@ export const HeroTextRenderer: React.FC<{ element: SceneElement; isSelected: boo
           fontWeight: effectiveFontWeight,
           lineHeight: effectiveLineHeight,
           color: titleColor,
-          textAlign: effectiveTextAlign
+          textAlign: titleTextAlign
         }}
       >
-        {renderHighlightedText(data.text || '', data.highlightWords, highlightColor, highlightGlow)}
+        {renderHighlightedText(data.text || '', data.highlightWords, accentStyle)}
       </h1>
 
       {hasSubtitle && (
@@ -162,14 +222,18 @@ export const HeroTextRenderer: React.FC<{ element: SceneElement; isSelected: boo
             fontWeight: subtitleFontWeight,
             lineHeight: subtitleLineHeight,
             color: subtitleColor,
-            textAlign: effectiveTextAlign
+            textAlign: subtitleTextAlign
           }}
         >
           {renderHighlightedText(
             data.subtitle || 'বিষয়বস্তুর বিস্তারিত বিবরণ বা প্রয়োজনীয় সাবটেক্সট এখানে প্রদর্শন করা হবে',
-            undefined,
-            highlightColor,
-            0
+            data.highlightWords,
+            {
+              ...accentStyle,
+              fontSize: accentStyle.fontSize
+                ? Math.min(accentStyle.fontSize, Math.round(subtitleFontSize * 1.25))
+                : undefined
+            }
           )}
         </p>
       )}
@@ -187,27 +251,38 @@ export const HeroTextInspector: React.FC<{
   const updateElementTypography = useStudioStore((s) => s.updateElementTypography);
   const updateElementSubStyle = useStudioStore((s) => s.updateElementSubStyle);
 
+  const accentSub = element.subStyles?.accent;
   const titleSub = element.subStyles?.title;
-  const activeHighlightColor = titleSub?.typography?.highlightColor || typography.highlightColor || '#38bdf8';
-  const activeHighlightGlow = titleSub?.typography?.highlightGlow ?? typography.highlightGlow ?? 16;
+  const activeHighlightColor =
+    accentSub?.textColor ||
+    accentSub?.typography?.highlightColor ||
+    titleSub?.typography?.highlightColor ||
+    typography.highlightColor ||
+    '#38bdf8';
+
+  const activeHighlightGlow =
+    accentSub?.typography?.highlightGlow ??
+    accentSub?.glowIntensity ??
+    titleSub?.typography?.highlightGlow ??
+    typography.highlightGlow ??
+    16;
+
   const activeTextAlign = titleSub?.typography?.textAlign || typography.textAlign || 'center';
 
   const handleHighlightColorChange = (color: string) => {
     updateElementTypography(element.id, { highlightColor: color });
-    if (element.subStyles?.title?.typography) {
-      updateElementSubStyle(element.id, 'title', {
-        typography: { ...element.subStyles.title.typography, highlightColor: color }
-      });
-    }
+    updateElementSubStyle(element.id, 'accent', {
+      textColor: color,
+      typography: { ...element.subStyles?.accent?.typography, highlightColor: color }
+    });
   };
 
   const handleHighlightGlowChange = (glow: number) => {
     updateElementTypography(element.id, { highlightGlow: glow });
-    if (element.subStyles?.title?.typography) {
-      updateElementSubStyle(element.id, 'title', {
-        typography: { ...element.subStyles.title.typography, highlightGlow: glow }
-      });
-    }
+    updateElementSubStyle(element.id, 'accent', {
+      glowIntensity: glow,
+      typography: { ...element.subStyles?.accent?.typography, highlightGlow: glow }
+    });
   };
 
   const handleTextAlignChange = (al: 'left' | 'center' | 'right') => {
@@ -239,8 +314,8 @@ export const HeroTextInspector: React.FC<{
         </div>
       </div>
 
-      {/* 2. Subtitle / Subtext (active for title_with_subtitle variant or when populated) */}
-      {(element.layoutVariant === 'title_with_subtitle' || data.subtitle !== undefined) && (
+      {/* 2. Subtitle / Subtext (only active for title_with_subtitle variant) */}
+      {element.layoutVariant === 'title_with_subtitle' && (
         <div className="space-y-1.5 p-2.5 rounded-xl bg-slate-900/60 border border-slate-800">
           <label className="text-xs font-mono text-slate-300 font-semibold flex items-center justify-between">
             <span>Subtitle / Subtext</span>
@@ -346,6 +421,6 @@ export const heroTextDef: ComponentDefinition = {
   DataInspector: HeroTextInspector,
   specFormatter: (el) => `
 - **Hero Header Block: "${el.data.text || 'Heading'}"**
-  - Variant: \`${el.layoutVariant || 'simple_title_block'}\`${el.data.subtitle ? `\n  - Subtitle: "${el.data.subtitle}"` : ''}
+  - Variant: \`${el.layoutVariant || 'simple_title_block'}\`${el.layoutVariant === 'title_with_subtitle' && el.data.subtitle ? `\n  - Subtitle: "${el.data.subtitle}"` : ''}
   - Highlight Accent: \`${el.data.highlightWords || 'None'}\``
 };

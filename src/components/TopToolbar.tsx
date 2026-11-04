@@ -9,6 +9,7 @@ import {
   FolderOpen,
   Camera,
   ClipboardCopy,
+  Copy,
   Sparkles,
   Check,
   Film,
@@ -23,11 +24,24 @@ import {
   Smartphone,
   Monitor,
   Square,
-  Play
+  Play,
+  Layers,
+  ChevronDown
 } from 'lucide-react';
 import { useStudioStore } from '../store/studioStore';
 import { generateSceneSpec } from '../utils/specGenerator';
 import { AspectRatioType, getSceneDimensions } from '../types/studio';
+import {
+  copyFullSceneHtml,
+  downloadFullSceneHtml,
+  copyAllComponentsHtml,
+  downloadAllComponentsHtml,
+  copyIndividualComponentHtml,
+  generateIndividualComponentHtml,
+  downloadIndividualComponentHtml
+} from '../utils/figmaHtmlExporter';
+import { getComponentDefinition } from '../registry/componentRegistry';
+import { resolveThemePalette } from '../utils/themePalettes';
 
 interface TopToolbarProps {
   onOpenFullSpec: () => void;
@@ -53,6 +67,68 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({ onOpenFullSpec }) => {
   const activeScene = useStudioStore((s) =>
     s.project.scenes.find((sc) => sc.id === activeSceneId)
   );
+
+  const [showFigmaMenu, setShowFigmaMenu] = useState(false);
+  const [copiedSceneHtml, setCopiedSceneHtml] = useState(false);
+  const [copiedAllHtml, setCopiedAllHtml] = useState(false);
+  const [copiedElementHtml, setCopiedElementHtml] = useState(false);
+
+  const selectedElementId = useStudioStore((s) => s.selectedElementId);
+  const selectedElement = activeScene?.elements.find((e) => e.id === selectedElementId);
+  const selectedDef = selectedElement ? getComponentDefinition(selectedElement.type) : null;
+  const activePalette = activeScene ? resolveThemePalette(activeScene.theme) : null;
+  const sceneDimensions = getSceneDimensions(activeScene?.aspectRatio);
+
+  const handleCopySceneHtml = async () => {
+    if (!activeScene) return;
+    const ok = await copyFullSceneHtml(activeScene);
+    if (ok) {
+      setCopiedSceneHtml(true);
+      setTimeout(() => setCopiedSceneHtml(false), 2500);
+    } else {
+      downloadFullSceneHtml(activeScene);
+      alert('Clipboard write was restricted by your browser. The scene HTML file has been downloaded instead!');
+    }
+  };
+
+  const handleDownloadSceneHtml = () => {
+    if (!activeScene) return;
+    downloadFullSceneHtml(activeScene);
+  };
+
+  const handleCopyAllComponentsHtml = async () => {
+    const ok = await copyAllComponentsHtml(activeScene?.theme);
+    if (ok) {
+      setCopiedAllHtml(true);
+      setTimeout(() => setCopiedAllHtml(false), 2500);
+    } else {
+      downloadAllComponentsHtml(activeScene?.theme);
+      alert('Clipboard write was restricted by your browser. The components HTML file has been downloaded instead!');
+    }
+  };
+
+  const handleDownloadAllComponentsHtml = () => {
+    downloadAllComponentsHtml(activeScene?.theme);
+  };
+
+  const handleCopyElementHtml = async () => {
+    if (!selectedElement) return;
+    const def = getComponentDefinition(selectedElement.type);
+    const ok = await copyIndividualComponentHtml(selectedElement, def, activeScene?.theme);
+    if (ok) {
+      setCopiedElementHtml(true);
+      setTimeout(() => setCopiedElementHtml(false), 2500);
+    } else {
+      downloadIndividualComponentHtml(selectedElement, def, activeScene?.theme);
+      alert('Clipboard write was restricted by your browser. The element HTML file has been downloaded instead!');
+    }
+  };
+
+  const handleDownloadElementHtml = () => {
+    if (!selectedElement) return;
+    const def = getComponentDefinition(selectedElement.type);
+    downloadIndividualComponentHtml(selectedElement, def, activeScene?.theme);
+  };
 
   const setProjectTitle = useStudioStore((s) => s.setProjectTitle);
   const setZoomScale = useStudioStore((s) => s.setZoomScale);
@@ -81,8 +157,16 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({ onOpenFullSpec }) => {
     const node = document.getElementById('vsss-artboard-canvas');
     if (!node || !activeScene) return;
 
+    const prevSelectedId = useStudioStore.getState().selectedElementId;
+
     try {
       setIsExportingPng(true);
+
+      // Deselect element during capture so selection bounding box is completely hidden
+      if (prevSelectedId) {
+        useStudioStore.getState().setSelectedElementId(null);
+        await new Promise((r) => setTimeout(r, 60));
+      }
 
       const sceneName = activeScene.name || 'scene';
       const { width: targetWidth, height: targetHeight } = getSceneDimensions(
@@ -100,9 +184,12 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({ onOpenFullSpec }) => {
           height: `${targetHeight}px`
         },
         filter: (childNode) => {
-          // Hide UI handles, floating badges, and selection outlines
+          // Hide UI handles, floating badges, and editor safeguard guides
           if (childNode instanceof HTMLElement) {
             if (childNode.classList.contains('vsss-export-hide')) return false;
+            if (childNode.classList.contains('vsss-safeguard-guide')) return false;
+            if (childNode.getAttribute('data-export-hide') === 'true') return false;
+            if (childNode.getAttribute('data-safeguard-guide') === 'true') return false;
             if (childNode.classList.contains('rnd-handle')) return false;
           }
           return true;
@@ -116,6 +203,9 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({ onOpenFullSpec }) => {
     } catch (err) {
       console.error('Failed to export PNG snapshot:', err);
     } finally {
+      if (prevSelectedId) {
+        useStudioStore.getState().setSelectedElementId(prevSelectedId);
+      }
       setIsExportingPng(false);
     }
   };
@@ -433,6 +523,161 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({ onOpenFullSpec }) => {
         </button>
 
         <div className="h-4 w-px bg-slate-800" />
+
+        {/* Figma HTML Export / Import to Figma Menu */}
+        <div className="relative">
+          <button
+            onClick={() => setShowFigmaMenu(!showFigmaMenu)}
+            title="Export HTML for Figma (All Backgrounds, Full Scenes & Components with Active Theme)"
+            className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+              showFigmaMenu
+                ? 'bg-cyan-950 text-cyan-300 border-cyan-400 shadow-lg shadow-cyan-950/60 ring-1 ring-cyan-500/50'
+                : 'bg-slate-900 hover:bg-slate-800 text-cyan-300 border-slate-800 hover:border-cyan-500/40'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Figma Export</span>
+            <ChevronDown className="w-3 h-3 text-cyan-400/80" />
+          </button>
+
+          {showFigmaMenu && (
+            <div
+              className="absolute right-0 top-11 w-96 bg-[#0c1222] border border-cyan-500/40 rounded-2xl p-4 shadow-2xl z-50 space-y-3.5 text-slate-200 select-none backdrop-blur-xl animate-in fade-in"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-md bg-cyan-950 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
+                    <Layers className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-white leading-none">
+                      Figma HTML Importer
+                    </h3>
+                    <span className="text-[10px] text-cyan-400 font-mono">
+                      Theme: {activePalette?.label || activeScene?.theme.bgPreset}
+                    </span>
+                  </div>
+                </div>
+                <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 border border-cyan-500/40 text-cyan-300">
+                  html.to.design
+                </span>
+              </div>
+
+              {/* Option 1: Full Active Scene Frame */}
+              <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                    🎬 Full Scene Frame (Active Scene)
+                  </span>
+                  <span className="text-[10px] font-mono text-cyan-400 font-bold bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-500/30">
+                    {sceneDimensions.width} × {sceneDimensions.height}px
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-snug">
+                  Includes full frame background, grid, title safe margins, and all {activeScene?.elements.length || 0} placed components.
+                </p>
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    onClick={handleCopySceneHtml}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 text-xs font-bold transition-all shadow-md cursor-pointer"
+                  >
+                    {copiedSceneHtml ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedSceneHtml ? 'Copied Scene HTML!' : 'Copy Scene HTML'}</span>
+                  </button>
+                  <button
+                    onClick={handleDownloadSceneHtml}
+                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors cursor-pointer"
+                    title="Download scene .html file"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Option 2: Full 57 Component Variations (Library) */}
+              <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                    📦 All 57 Components & Variations
+                  </span>
+                  <span className="text-[10px] font-mono text-purple-400 font-bold bg-purple-950/80 px-2 py-0.5 rounded border border-purple-500/30">
+                    Full System
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-snug">
+                  All 14 component categories rendered with active theme colors, borders, and Bengali fonts.
+                </p>
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    onClick={handleCopyAllComponentsHtml}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md cursor-pointer"
+                  >
+                    {copiedAllHtml ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedAllHtml ? 'Copied All Components!' : 'Copy All Components HTML'}</span>
+                  </button>
+                  <button
+                    onClick={handleDownloadAllComponentsHtml}
+                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors cursor-pointer"
+                    title="Download complete library .html file"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Option 3: Selected Component on Canvas (if any) */}
+              {selectedElement && selectedDef && (
+                <div className="p-2.5 rounded-xl bg-cyan-950/30 border border-cyan-500/30 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-cyan-300 truncate">
+                      🎯 Selected: {selectedDef.label}
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      {selectedElement.layoutVariant || 'default'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleCopyElementHtml}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold border border-slate-700 transition-colors cursor-pointer"
+                    >
+                      {copiedElementHtml ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedElementHtml ? 'Copied!' : 'Copy Element HTML'}</span>
+                    </button>
+                    <button
+                      onClick={handleDownloadElementHtml}
+                      className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors cursor-pointer"
+                      title="Download element .html"
+                    >
+                      <Download className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Footer link to interactive showcase */}
+              <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px]">
+                <a
+                  href="/?view=showcase"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1"
+                >
+                  <span>Open Interactive Browser View</span>
+                  <span>→</span>
+                </a>
+                <button
+                  onClick={() => setShowFigmaMenu(false)}
+                  className="text-slate-500 hover:text-slate-300 text-[10px] cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Presentation Preview Mode */}
         <button

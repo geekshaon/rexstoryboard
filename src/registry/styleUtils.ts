@@ -21,7 +21,9 @@ export const BASE_STYLE: ElementStyle = {
   borderRadius: 16,
   padding: 20,
   glowColor: '#38bdf8',
-  glowIntensity: 0
+  glowIntensity: 0,
+  verticalAlign: 'center',
+  horizontalAlign: 'center'
 };
 
 export const BASE_TYPOGRAPHY: Typography = {
@@ -60,8 +62,58 @@ export function getFontFamilyCss(family: FontFamilyType): string {
   }
 }
 
+/**
+ * Converts any hex or rgb color string to rgba format with the specified opacity.
+ * Handles #RGB, #RRGGBB, #RRGGBBAA, rgb(...), rgba(...).
+ */
+export function hexToRgba(color: string, opacity: number): string {
+  if (!color || color === 'transparent') return 'transparent';
+  const clampedOpacity = Math.max(0, Math.min(1, opacity));
+  if (clampedOpacity === 0) return 'transparent';
+
+  const cleanColor = color.trim();
+
+  // Already rgba? Replace alpha channel
+  if (cleanColor.startsWith('rgba(')) {
+    const parts = cleanColor.slice(5, -1).split(',').map((p) => p.trim());
+    if (parts.length >= 3) {
+      return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${clampedOpacity})`;
+    }
+  }
+
+  // rgb(...)
+  if (cleanColor.startsWith('rgb(')) {
+    const parts = cleanColor.slice(4, -1).split(',').map((p) => p.trim());
+    if (parts.length >= 3) {
+      return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${clampedOpacity})`;
+    }
+  }
+
+  // Hex (#RGB or #RRGGBB)
+  if (cleanColor.startsWith('#')) {
+    let hex = cleanColor.slice(1);
+    if (hex.length === 3) {
+      hex = hex.split('').map((c) => c + c).join('');
+    }
+    if (hex.length === 6 || hex.length === 8) {
+      const r = parseInt(hex.substring(0, 2), 16);
+      const g = parseInt(hex.substring(2, 4), 16);
+      const b = parseInt(hex.substring(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${clampedOpacity})`;
+    }
+  }
+
+  return cleanColor;
+}
+
 export function resolveElementStyles(element: SceneElement) {
-  const { style, cornerRadius, geometry } = element;
+  // Merge container subStyle override if present
+  const containerSub = element.subStyles?.container || {};
+  const style = {
+    ...element.style,
+    ...containerSub
+  };
+  const { cornerRadius, geometry } = element;
 
   let borderRadiusStyle = `${style.borderRadius ?? 16}px`;
   if (cornerRadius) {
@@ -84,11 +136,25 @@ export function resolveElementStyles(element: SceneElement) {
     marginStyle = `${mb.top}px ${mb.right}px ${mb.bottom}px ${mb.left}px`;
   }
 
-  let background = style.bgColor;
-  if (style.bgMode === 'gradient') {
-    background = `linear-gradient(${style.gradientAngle ?? 135}deg, ${style.bgColor}, ${style.gradientColor2 || '#1e293b'})`;
-  } else if (style.bgMode === 'transparent') {
-    background = 'transparent';
+  // Comprehensive Background & Opacity Resolution
+  const opacity = style.bgOpacity !== undefined ? style.bgOpacity : 1.0;
+  const isTransparent = style.bgMode === 'transparent' || opacity === 0;
+
+  let background = 'transparent';
+  let backgroundColor = 'transparent';
+
+  if (!isTransparent) {
+    if (style.bgMode === 'gradient') {
+      const color1 = hexToRgba(style.bgColor || '#0f172a', opacity);
+      const color2 = hexToRgba(style.gradientColor2 || '#1e293b', opacity);
+      background = `linear-gradient(${style.gradientAngle ?? 135}deg, ${color1}, ${color2})`;
+      backgroundColor = color1;
+    } else {
+      // Solid mode
+      const solidColor = hexToRgba(style.bgColor || '#0f172a', opacity);
+      background = solidColor;
+      backgroundColor = solidColor;
+    }
   }
 
   let borderTopWidth = `${style.borderWidth ?? 1}px`;
@@ -116,9 +182,17 @@ export function resolveElementStyles(element: SceneElement) {
     boxShadow = `0 0 ${style.glowIntensity * 2}px ${style.glowColor || '#38bdf8'}`;
   }
 
+  // CRITICAL: When transparent, NEVER apply backdropFilter blur! A blur filter on transparent backgrounds
+  // renders an opaque frosted glass rectangle over the canvas, destroying transparency.
+  const effectiveBackdropFilter =
+    !isTransparent && (style.backdropBlur ?? 0) > 0
+      ? `blur(${style.backdropBlur}px)`
+      : undefined;
+
   return {
     background,
-    backdropFilter: style.backdropBlur ? `blur(${style.backdropBlur}px)` : undefined,
+    backgroundColor,
+    backdropFilter: effectiveBackdropFilter,
     borderTopWidth,
     borderRightWidth,
     borderBottomWidth,
@@ -141,4 +215,3 @@ export function toBanglaDigit(num: number | string): string {
   const banglaDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
   return String(num).replace(/[0-9]/g, (w) => banglaDigits[+w]);
 }
-

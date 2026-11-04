@@ -1,3 +1,5 @@
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { useStudioStore } from '../src/store/studioStore';
 import {
   getAllComponentDefinitions,
@@ -9,8 +11,19 @@ import {
   resolveElementStyles,
   getSubPartStyle,
   getFontFamilyCss,
+  hexToRgba,
   toBanglaDigit
 } from '../src/registry/styleUtils';
+import { HeroTextRenderer } from '../src/registry/components/smart/HeroText';
+import { HeaderCardRenderer } from '../src/registry/components/smart/HeaderCard';
+import { FooterCardRenderer } from '../src/registry/components/smart/FooterCard';
+import { SubtitleCaptionRenderer } from '../src/registry/components/smart/SubtitleCaption';
+import { ListCardRenderer } from '../src/registry/components/smart/ListCard';
+import { TimelineCardRenderer } from '../src/registry/components/smart/TimelineCard';
+import { NumberCardRenderer } from '../src/registry/components/smart/NumberCard';
+import { DataVisualCardRenderer } from '../src/registry/components/smart/DataVisualCard';
+import { ButtonPillRenderer } from '../src/registry/components/smart/ButtonPillCard';
+import { ImageMediaRenderer } from '../src/registry/components/smart/ImageMediaCard';
 import { computeVoiceoverCues, syncSceneElementsWithVoiceover } from '../src/utils/voiceSync';
 import { generateSceneSpec, screenToManimCoords } from '../src/utils/specGenerator';
 import { THEME_COLOR_PRESETS } from '../src/utils/themePalettes';
@@ -52,13 +65,19 @@ console.log('================================================================\n'
 console.log('--- Suite 1: Component Registry & Schema Audit ---');
 {
   const definitions = getAllComponentDefinitions();
-  assertEqual(definitions.length, 8, 'PRIMARY_DEFINITIONS contains exactly 8 components');
+  assertEqual(definitions.length, 14, 'PRIMARY_DEFINITIONS contains exactly 14 components');
 
   const expectedTypes = [
     'hero_text',
     'header_card',
     'footer_card',
     'subtitle_caption',
+    'list_card',
+    'timeline_card',
+    'number_card',
+    'data_visual_card',
+    'button_pill_card',
+    'image_media_card',
     'container_box',
     'basic_text',
     'basic_badge',
@@ -323,8 +342,8 @@ console.log('\n--- Suite 4: Studio Store Core Lifecycle ---');
   assertEqual(sgScene?.theme.safeGuard?.bottom, 120, 'Safe guard bottom updated');
 }
 
-// ─── SUITE 5: Element Creation & Placement for All 8 Types ─────────────────────
-console.log('\n--- Suite 5: Element Creation for All 8 Types ---');
+// ─── SUITE 5: Element Creation & Placement for All 10 Types ─────────────────────
+console.log('\n--- Suite 5: Element Creation for All 10 Types ---');
 {
   const store = useStudioStore.getState();
   const activeSceneId = useStudioStore.getState().project.activeSceneId;
@@ -334,6 +353,8 @@ console.log('\n--- Suite 5: Element Creation for All 8 Types ---');
     'header_card',
     'footer_card',
     'subtitle_caption',
+    'list_card',
+    'timeline_card',
     'container_box',
     'basic_text',
     'basic_badge',
@@ -745,6 +766,31 @@ console.log('\n--- Suite 15: Deep Property Inspection Audit Across All 8 Compone
         showTitle: true,
         accentColor: '#10b981'
       },
+      list_card: {
+        title: 'বৈশিষ্ট্য তালিকা অডিট',
+        showTitle: true
+      },
+      timeline_card: {
+        title: 'টাইমলাইন অডিট',
+        showTitle: true,
+        activeStep: 2
+      },
+      number_card: {
+        title: 'কেপিআই অডিট শিরোনাম',
+        value: '99.9'
+      },
+      data_visual_card: {
+        title: 'ডাটা ভিজ্যুয়াল চার্ট অডিট',
+        headerTag: '• AUDITED'
+      },
+      button_pill_card: {
+        liveText: 'সিগন্যাল অডিট (HIGH)',
+        pillLabel: 'P1. AUDIT_PILL'
+      },
+      image_media_card: {
+        title: 'মিডিয়া শোকেস অডিট',
+        badge: 'FIG AUDIT'
+      },
       container_box: {
         gap: 28
       },
@@ -986,6 +1032,459 @@ console.log('\n--- Suite 15: Deep Property Inspection Audit Across All 8 Compone
   });
 }
 
+// ─── SUITE 16: Hierarchical Styling, Independent Alignments & Accent System ───
+console.log('\n--- Suite 16: Hierarchical Styling, Independent Alignments & Accent System ---');
+{
+  const store = useStudioStore.getState();
+  const activeSceneId = useStudioStore.getState().project.activeSceneId;
+
+  // Add a hero_text element
+  store.addElement('hero_text');
+  const scene = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!;
+  const heroEl = scene.elements[scene.elements.length - 1];
+  assert(Boolean(heroEl), 'hero_text added for Suite 16');
+
+  // Test 1: Content Flow Alignment (verticalAlign and horizontalAlign)
+  store.updateElementStyle(heroEl.id, { verticalAlign: 'top', horizontalAlign: 'right' });
+  let checkEl = useStudioStore.getState().project.scenes
+    .find((s) => s.id === activeSceneId)!
+    .elements.find((e) => e.id === heroEl.id)!;
+  assertEqual(checkEl.style.verticalAlign, 'top', 'style.verticalAlign set to top');
+  assertEqual(checkEl.style.horizontalAlign, 'right', 'style.horizontalAlign set to right');
+
+  // Test 2: Independent Sub-Part Alignments (Title = Left, Body = Right)
+  store.updateElementSubStyle(heroEl.id, 'title', {
+    typography: { textAlign: 'left', fontSize: 52, fontWeight: '800' }
+  });
+  store.updateElementSubStyle(heroEl.id, 'body', {
+    typography: { textAlign: 'right', fontSize: 24, fontWeight: '400' }
+  });
+
+  checkEl = useStudioStore.getState().project.scenes
+    .find((s) => s.id === activeSceneId)!
+    .elements.find((e) => e.id === heroEl.id)!;
+  assertEqual(checkEl.subStyles?.title?.typography?.textAlign, 'left', 'Title textAlign is independent (left)');
+  assertEqual(checkEl.subStyles?.body?.typography?.textAlign, 'right', 'Body textAlign is independent (right)');
+
+  // Test 3: Updating container typography does NOT overwrite child overrides
+  store.updateElementTypography(heroEl.id, { textAlign: 'center', fontSize: 40 });
+  checkEl = useStudioStore.getState().project.scenes
+    .find((s) => s.id === activeSceneId)!
+    .elements.find((e) => e.id === heroEl.id)!;
+  assertEqual(checkEl.typography.textAlign, 'center', 'Container typography textAlign set to center');
+  assertEqual(checkEl.subStyles?.title?.typography?.textAlign, 'left', 'Title override remained left without corruption');
+  assertEqual(checkEl.subStyles?.body?.typography?.textAlign, 'right', 'Body override remained right without corruption');
+
+  // Test 4: Highlight Accent subStyle updates
+  store.updateElementSubStyle(heroEl.id, 'accent', {
+    textColor: '#d97706',
+    glowIntensity: 32,
+    bgColor: '#fef3c7',
+    borderRadius: 8,
+    typography: {
+      fontSize: 55,
+      fontWeight: '400',
+      highlightColor: '#d97706',
+      highlightGlow: 32
+    }
+  });
+
+  checkEl = useStudioStore.getState().project.scenes
+    .find((s) => s.id === activeSceneId)!
+    .elements.find((e) => e.id === heroEl.id)!;
+  assertEqual(checkEl.subStyles?.accent?.textColor, '#d97706', 'Accent textColor is #d97706');
+  assertEqual(checkEl.subStyles?.accent?.typography?.fontSize, 55, 'Accent fontSize is 55');
+  assertEqual(checkEl.subStyles?.accent?.typography?.fontWeight, '400', 'Accent fontWeight is 400');
+  assertEqual(checkEl.subStyles?.accent?.glowIntensity, 32, 'Accent glowIntensity is 32');
+  assertEqual(checkEl.subStyles?.accent?.bgColor, '#fef3c7', 'Accent bgColor is #fef3c7');
+  assertEqual(checkEl.subStyles?.accent?.borderRadius, 8, 'Accent borderRadius is 8');
+
+  // Clean up hero
+  store.deleteElement(heroEl.id);
+
+  // Test 5: Header Card subStyles & badge customization
+  store.addElement('header_card');
+  const headerScene = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!;
+  const headerEl = headerScene.elements[headerScene.elements.length - 1];
+  assert(Boolean(headerEl), 'header_card added for Suite 16');
+
+  store.updateElementSubStyle(headerEl.id, 'title', {
+    typography: { textAlign: 'right', fontSize: 26, fontWeight: '800' }
+  });
+  store.updateElementSubStyle(headerEl.id, 'body', {
+    typography: { textAlign: 'left', fontSize: 14 }
+  });
+  store.updateElementSubStyle(headerEl.id, 'badge', {
+    bgColor: '#0284c7',
+    textColor: '#f0f9ff',
+    borderColor: '#38bdf8',
+    borderWidth: 2,
+    borderRadius: 20,
+    typography: { fontSize: 13, fontWeight: '700' }
+  });
+  store.updateElementSubStyle(headerEl.id, 'accent', {
+    textColor: '#f59e0b',
+    glowIntensity: 20
+  });
+
+  let checkHeader = useStudioStore.getState().project.scenes
+    .find((s) => s.id === activeSceneId)!
+    .elements.find((e) => e.id === headerEl.id)!;
+  assertEqual(checkHeader.subStyles?.title?.typography?.textAlign, 'right', 'Header title textAlign is right');
+  assertEqual(checkHeader.subStyles?.body?.typography?.textAlign, 'left', 'Header subtitle textAlign is left');
+  assertEqual(checkHeader.subStyles?.badge?.bgColor, '#0284c7', 'Header badge bgColor is #0284c7');
+  assertEqual(checkHeader.subStyles?.badge?.textColor, '#f0f9ff', 'Header badge textColor is #f0f9ff');
+  assertEqual(checkHeader.subStyles?.badge?.borderWidth, 2, 'Header badge borderWidth is 2');
+  assertEqual(checkHeader.subStyles?.badge?.borderRadius, 20, 'Header badge borderRadius is 20');
+  assertEqual(checkHeader.subStyles?.accent?.textColor, '#f59e0b', 'Header accent textColor is #f59e0b');
+
+  store.deleteElement(headerEl.id);
+
+  // Test 6: Footer Card subStyles & progress badge customization
+  store.addElement('footer_card');
+  const footerScene = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!;
+  const footerEl = footerScene.elements[footerScene.elements.length - 1];
+  assert(Boolean(footerEl), 'footer_card added for Suite 16');
+
+  store.updateElementSubStyle(footerEl.id, 'body', {
+    typography: { textAlign: 'center', fontSize: 18 }
+  });
+  store.updateElementSubStyle(footerEl.id, 'badge', {
+    bgColor: '#1e293b',
+    textColor: '#38bdf8',
+    borderColor: '#0284c7',
+    borderRadius: 8,
+    typography: { fontSize: 12, fontWeight: '700' }
+  });
+  store.updateElementSubStyle(footerEl.id, 'accent', {
+    textColor: '#ec4899',
+    glowIntensity: 16
+  });
+
+  let checkFooter = useStudioStore.getState().project.scenes
+    .find((s) => s.id === activeSceneId)!
+    .elements.find((e) => e.id === footerEl.id)!;
+  assertEqual(checkFooter.subStyles?.body?.typography?.textAlign, 'center', 'Footer note textAlign is center');
+  assertEqual(checkFooter.subStyles?.badge?.bgColor, '#1e293b', 'Footer badge bgColor is #1e293b');
+  assertEqual(checkFooter.subStyles?.badge?.textColor, '#38bdf8', 'Footer badge textColor is #38bdf8');
+  assertEqual(checkFooter.subStyles?.badge?.borderRadius, 8, 'Footer badge borderRadius is 8');
+  assertEqual(checkFooter.subStyles?.accent?.textColor, '#ec4899', 'Footer accent textColor is #ec4899');
+
+  store.deleteElement(footerEl.id);
+
+  // Test 7: Subtitle Caption Card subStyles & badge customization
+  store.addElement('subtitle_caption');
+  const subScene = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!;
+  const subEl = subScene.elements[subScene.elements.length - 1];
+  assert(Boolean(subEl), 'subtitle_caption added for Suite 16');
+
+  store.updateElementSubStyle(subEl.id, 'title', {
+    typography: { textAlign: 'center', fontSize: 28 }
+  });
+  store.updateElementSubStyle(subEl.id, 'body', {
+    typography: { textAlign: 'right', fontSize: 18 }
+  });
+  store.updateElementSubStyle(subEl.id, 'badge', {
+    bgColor: '#065f46',
+    textColor: '#a7f3d0',
+    borderColor: '#10b981',
+    borderWidth: 2,
+    borderRadius: 14,
+    typography: { fontSize: 12, fontWeight: '800' }
+  });
+  store.updateElementSubStyle(subEl.id, 'accent', {
+    textColor: '#10b981',
+    glowIntensity: 24,
+    bgColor: 'rgba(16, 185, 129, 0.2)'
+  });
+
+  let checkSub = useStudioStore.getState().project.scenes
+    .find((s) => s.id === activeSceneId)!
+    .elements.find((e) => e.id === subEl.id)!;
+  assertEqual(checkSub.subStyles?.title?.typography?.textAlign, 'center', 'Subtitle title textAlign is center');
+  assertEqual(checkSub.subStyles?.body?.typography?.textAlign, 'right', 'Subtitle body textAlign is right');
+  assertEqual(checkSub.subStyles?.badge?.bgColor, '#065f46', 'Subtitle badge bgColor is #065f46');
+  assertEqual(checkSub.subStyles?.badge?.textColor, '#a7f3d0', 'Subtitle badge textColor is #a7f3d0');
+  assertEqual(checkSub.subStyles?.badge?.borderWidth, 2, 'Subtitle badge borderWidth is 2');
+  assertEqual(checkSub.subStyles?.accent?.textColor, '#10b981', 'Subtitle accent textColor is #10b981');
+  assertEqual(checkSub.subStyles?.accent?.bgColor, 'rgba(16, 185, 129, 0.2)', 'Subtitle accent bgColor is pill rgba');
+
+  store.deleteElement(subEl.id);
+}
+
+// ============================================================================
+// SUITE 17: Virtual DOM Component Rendering & Style Engine Audit
+// ============================================================================
+console.log('\n--- Suite 17: Virtual DOM Component Rendering & Transparency Engine Audit ---');
+{
+  const store = useStudioStore.getState();
+  const activeSceneId = store.project.activeSceneId;
+
+  // 1. hexToRgba color conversion tests
+  assertEqual(hexToRgba('#ffffff', 0.5), 'rgba(255, 255, 255, 0.5)', 'hexToRgba converts 6-digit hex with opacity');
+  assertEqual(hexToRgba('#fff', 0.8), 'rgba(255, 255, 255, 0.8)', 'hexToRgba converts 3-digit hex with opacity');
+  assertEqual(hexToRgba('#0f172a', 0), 'transparent', 'hexToRgba with 0 opacity returns transparent');
+  assertEqual(hexToRgba('transparent', 0.5), 'transparent', 'hexToRgba with transparent input returns transparent');
+  assertEqual(hexToRgba('rgba(15, 23, 42, 0.9)', 0.4), 'rgba(15, 23, 42, 0.4)', 'hexToRgba replaces alpha in rgba');
+
+  // 2. resolveElementStyles tests
+  store.addElement('hero_text');
+  let scene = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!;
+  let heroEl = scene.elements[scene.elements.length - 1];
+
+  // Test bgMode: 'transparent'
+  store.updateElementStyle(heroEl.id, { bgMode: 'transparent', bgOpacity: 0, backdropBlur: 8 });
+  heroEl = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!.elements.find((e) => e.id === heroEl.id)!;
+  let computedStyle = resolveElementStyles(heroEl);
+  assertEqual(computedStyle.background, 'transparent', 'Transparent bgMode gives background: transparent');
+  assertEqual(computedStyle.backgroundColor, 'transparent', 'Transparent bgMode gives backgroundColor: transparent');
+  assertEqual(computedStyle.backdropFilter, undefined, 'CRITICAL: Transparent bgMode has NO backdropFilter blur!');
+
+  // Test bgOpacity: 0 gives transparent even in solid mode
+  store.updateElementStyle(heroEl.id, { bgMode: 'solid', bgColor: '#1e293b', bgOpacity: 0 });
+  heroEl = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!.elements.find((e) => e.id === heroEl.id)!;
+  computedStyle = resolveElementStyles(heroEl);
+  assertEqual(computedStyle.background, 'transparent', '0% bgOpacity in solid mode resolves to transparent');
+  assertEqual(computedStyle.backdropFilter, undefined, '0% bgOpacity disables backdropFilter blur');
+
+  // Test bgOpacity: 0.5 converts to rgba
+  store.updateElementStyle(heroEl.id, { bgMode: 'solid', bgColor: '#000000', bgOpacity: 0.5, backdropBlur: 10 });
+  heroEl = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!.elements.find((e) => e.id === heroEl.id)!;
+  computedStyle = resolveElementStyles(heroEl);
+  assertEqual(computedStyle.background, 'rgba(0, 0, 0, 0.5)', '50% bgOpacity resolves to rgba(0, 0, 0, 0.5)');
+  assertEqual(computedStyle.backdropFilter, 'blur(10px)', 'Non-transparent backdropBlur is applied');
+
+  // Test gradient mode with opacity
+  store.updateElementStyle(heroEl.id, { bgMode: 'gradient', bgColor: '#000000', gradientColor2: '#ffffff', bgOpacity: 0.8, gradientAngle: 90 });
+  heroEl = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!.elements.find((e) => e.id === heroEl.id)!;
+  computedStyle = resolveElementStyles(heroEl);
+  assert(computedStyle.background.includes('linear-gradient(90deg, rgba(0, 0, 0, 0.8), rgba(255, 255, 255, 0.8))'), 'Gradient mode converts both stops to rgba with opacity');
+
+  // 3. True Virtual DOM Rendering with react-dom/server renderToStaticMarkup
+  // Render HeroText with 100% transparent box
+  store.updateElementStyle(heroEl.id, { bgMode: 'transparent', bgOpacity: 0, backdropBlur: 0, borderWidth: 0 });
+  store.updateElementData(heroEl.id, {
+    text: 'ডিজিটাল লজিক ও [অ্যান্ড গেট]',
+    subtitle: 'লজিক গেটের [মৌলিক বিশ্লেষণ]',
+    highlightWords: 'অ্যান্ড গেট'
+  });
+  store.setElementLayoutVariant(heroEl.id, 'title_with_subtitle');
+  store.updateElementSubStyle(heroEl.id, 'title', {
+    typography: { textAlign: 'left', fontSize: 32, textColor: '#f1f5f9' }
+  });
+  store.updateElementSubStyle(heroEl.id, 'body', {
+    textColor: '#94a3b8',
+    typography: { textAlign: 'right', fontSize: 18 }
+  });
+  store.updateElementSubStyle(heroEl.id, 'accent', {
+    textColor: '#d97706',
+    glowIntensity: 20
+  });
+
+  heroEl = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!.elements.find((e) => e.id === heroEl.id)!;
+  let heroHtml = renderToStaticMarkup(React.createElement(HeroTextRenderer, { element: heroEl, isSelected: false }));
+
+  assert(heroHtml.includes('background:transparent') || heroHtml.includes('background: transparent'), 'HeroText virtual DOM renders background: transparent');
+  assert(!heroHtml.includes('backdrop-filter:blur'), 'HeroText virtual DOM has zero backdrop blur when transparent');
+  assert(!heroHtml.includes('backdrop-filter: blur'), 'HeroText virtual DOM has zero backdrop-filter: blur');
+  assert(heroHtml.includes('text-align:left') || heroHtml.includes('text-align: left'), 'HeroText title has independent text-align: left in DOM');
+  assert(heroHtml.includes('text-align:right') || heroHtml.includes('text-align: right'), 'HeroText subtitle has independent text-align: right in DOM');
+  assert(heroHtml.includes('color:#d97706') || heroHtml.includes('color: #d97706'), 'HeroText highlight span renders accent color #d97706');
+  assert(heroHtml.includes('0 0 20px #d9770680'), 'HeroText highlight span renders glow shadow in DOM');
+  assert(heroHtml.includes('display:inline;') || heroHtml.includes('display: inline;'), 'Clean text highlight uses display: inline for natural text wrapping');
+  assert(heroHtml.includes('অ্যান্ড গেট'), 'Bracketed word in title is rendered inside highlight span');
+  assert(heroHtml.includes('মৌলিক বিশ্লেষণ'), 'Bracketed word in subtitle is rendered inside highlight span');
+
+  // Test Pill Badge mode in DOM
+  store.updateElementSubStyle(heroEl.id, 'accent', {
+    bgColor: '#fef3c7',
+    textColor: '#b45309',
+    borderRadius: 8
+  });
+  heroEl = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!.elements.find((e) => e.id === heroEl.id)!;
+  heroHtml = renderToStaticMarkup(React.createElement(HeroTextRenderer, { element: heroEl, isSelected: false }));
+  assert(heroHtml.includes('display:inline-block') || heroHtml.includes('display: inline-block'), 'Pill accent uses display: inline-block');
+  assert(heroHtml.includes('background-color:#fef3c7') || heroHtml.includes('background-color: #fef3c7'), 'Pill accent renders pill background color');
+  assert(heroHtml.includes('border-radius:8px') || heroHtml.includes('border-radius: 8px'), 'Pill accent renders corner radius');
+
+  // 4. Test HeaderCardRenderer in Virtual DOM
+  store.addElement('header_card');
+  scene = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!;
+  let headerEl = scene.elements[scene.elements.length - 1];
+  store.updateElementStyle(headerEl.id, { bgMode: 'transparent', bgOpacity: 0, backdropBlur: 0 });
+  store.updateElementData(headerEl.id, { title: 'কম্পিউটার [আর্কিটেকচার]', badge: 'অধ্যায় ০১' });
+  store.updateElementSubStyle(headerEl.id, 'accent', { textColor: '#ec4899', glowIntensity: 16 });
+
+  headerEl = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!.elements.find((e) => e.id === headerEl.id)!;
+  let headerHtml = renderToStaticMarkup(React.createElement(HeaderCardRenderer, { element: headerEl, isSelected: false }));
+  assert(headerHtml.includes('background:transparent') || headerHtml.includes('background: transparent'), 'HeaderCard virtual DOM renders transparent background');
+  assert(!headerHtml.includes('backdrop-filter:blur'), 'HeaderCard virtual DOM has NO backdrop blur when transparent');
+  assert(headerHtml.includes('color:#ec4899') || headerHtml.includes('color: #ec4899'), 'HeaderCard accent highlight renders custom pink color');
+  assert(headerHtml.includes('আর্কিটেকচার'), 'HeaderCard bracketed highlight parsed and rendered');
+
+  // 5. Test FooterCardRenderer in Virtual DOM
+  store.addElement('footer_card');
+  scene = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!;
+  let footerEl = scene.elements[scene.elements.length - 1];
+  store.updateElementStyle(footerEl.id, { bgMode: 'transparent', bgOpacity: 0, backdropBlur: 0 });
+  store.updateElementData(footerEl.id, { note: 'পৃষ্ঠা [০৩/১২]' });
+  store.updateElementSubStyle(footerEl.id, 'accent', { textColor: '#10b981' });
+
+  footerEl = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!.elements.find((e) => e.id === footerEl.id)!;
+  let footerHtml = renderToStaticMarkup(React.createElement(FooterCardRenderer, { element: footerEl, isSelected: false }));
+  assert(footerHtml.includes('background:transparent') || footerHtml.includes('background: transparent'), 'FooterCard virtual DOM renders transparent background');
+  assert(!footerHtml.includes('backdrop-filter:blur'), 'FooterCard virtual DOM has NO backdrop blur when transparent');
+  assert(footerHtml.includes('color:#10b981') || footerHtml.includes('color: #10b981'), 'FooterCard accent highlight renders custom green color');
+
+  // 6. Test SubtitleCaptionRenderer in Virtual DOM
+  store.addElement('subtitle_caption');
+  scene = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!;
+  let captionEl = scene.elements[scene.elements.length - 1];
+  store.updateElementStyle(captionEl.id, { bgMode: 'transparent', bgOpacity: 0, backdropBlur: 0 });
+  store.updateElementData(captionEl.id, { title: 'মূল [পয়েন্ট]', body: 'এখানে [বিস্তারিত] ব্যাখ্যা' });
+  store.updateElementSubStyle(captionEl.id, 'accent', { textColor: '#f59e0b' });
+
+  captionEl = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!.elements.find((e) => e.id === captionEl.id)!;
+  let captionHtml = renderToStaticMarkup(React.createElement(SubtitleCaptionRenderer, { element: captionEl, isSelected: false }));
+  assert(captionHtml.includes('background:transparent') || captionHtml.includes('background: transparent'), 'SubtitleCaption virtual DOM renders transparent background');
+  assert(!captionHtml.includes('backdrop-filter:blur'), 'SubtitleCaption virtual DOM has NO backdrop blur when transparent');
+  assert(captionHtml.includes('color:#f59e0b') || captionHtml.includes('color: #f59e0b'), 'SubtitleCaption accent highlight renders custom amber color');
+
+  // 7. Test ListCardRenderer in Virtual DOM
+  store.addElement('list_card');
+  scene = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!;
+  let listEl = scene.elements[scene.elements.length - 1];
+  store.updateElementStyle(listEl.id, { bgMode: 'transparent', bgOpacity: 0, backdropBlur: 0 });
+  store.updateElementData(listEl.id, {
+    title: 'তালিকা [ফিচার]',
+    items: [
+      { id: 'item_t1', title: 'প্রথম [আইটেম]', description: 'বিবরণ ১' },
+      { id: 'item_t2', title: 'দ্বিতীয় আইটেম', description: 'বিবরণ ২' }
+    ]
+  });
+  store.updateElementSubStyle(listEl.id, 'accent', { textColor: '#06b6d4' });
+
+  listEl = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!.elements.find((e) => e.id === listEl.id)!;
+  let listHtml = renderToStaticMarkup(React.createElement(ListCardRenderer, { element: listEl, isSelected: false }));
+  assert(listHtml.includes('background:transparent') || listHtml.includes('background: transparent'), 'ListCard virtual DOM renders transparent background');
+  assert(!listHtml.includes('backdrop-filter:blur'), 'ListCard virtual DOM has NO backdrop blur when transparent');
+  assert(listHtml.includes('color:#06b6d4') || listHtml.includes('color: #06b6d4'), 'ListCard accent highlight renders custom cyan color');
+  assert(listHtml.includes('প্রথম'), 'ListCard items rendered in DOM');
+
+  // 8. Test TimelineCardRenderer in Virtual DOM (Vertical and Horizontal)
+  store.addElement('timeline_card');
+  scene = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!;
+  let timelineEl = scene.elements[scene.elements.length - 1];
+  store.updateElementStyle(timelineEl.id, { bgMode: 'transparent', bgOpacity: 0, backdropBlur: 0 });
+  store.updateElementData(timelineEl.id, {
+    title: 'টাইমলাইন [প্রসেস]',
+    activeStep: 1,
+    steps: [
+      { id: 'st_t1', stepNumber: 1, title: 'শুরু [ধাপ]', time: '০.১ সেকেন্ড' },
+      { id: 'st_t2', stepNumber: 2, title: 'শেষ ধাপ', time: '০.৯ সেকেন্ড' }
+    ]
+  });
+  store.updateElementSubStyle(timelineEl.id, 'accent', { textColor: '#8b5cf6' });
+
+  timelineEl = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!.elements.find((e) => e.id === timelineEl.id)!;
+  let timelineHtml = renderToStaticMarkup(React.createElement(TimelineCardRenderer, { element: timelineEl, isSelected: false }));
+  assert(timelineHtml.includes('background:transparent') || timelineHtml.includes('background: transparent'), 'TimelineCard virtual DOM renders transparent background');
+  assert(!timelineHtml.includes('backdrop-filter:blur'), 'TimelineCard virtual DOM has NO backdrop blur when transparent');
+  assert(timelineHtml.includes('color:#8b5cf6') || timelineHtml.includes('color: #8b5cf6'), 'TimelineCard accent highlight renders custom purple color');
+  assert(timelineHtml.includes('শুরু'), 'TimelineCard step title rendered in DOM');
+
+  // Test Horizontal Pipeline flow
+  store.setElementLayoutVariant(timelineEl.id, 'horizontal_pipeline');
+  timelineEl = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!.elements.find((e) => e.id === timelineEl.id)!;
+  let timelineHorizHtml = renderToStaticMarkup(React.createElement(TimelineCardRenderer, { element: timelineEl, isSelected: false }));
+  assert(timelineHorizHtml.includes('flex-1 flex flex-col items-center'), 'TimelineCard horizontal pipeline renders cleanly');
+
+  // 9. Test NumberCardRenderer in Virtual DOM
+  store.addElement('number_card');
+  scene = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!;
+  let numberEl = scene.elements[scene.elements.length - 1];
+  store.updateElementStyle(numberEl.id, { bgMode: 'transparent', bgOpacity: 0, backdropBlur: 0 });
+  store.updateElementData(numberEl.id, {
+    title: 'কেপিআই [মেট্রিক]',
+    value: '98.4',
+    suffix: '%'
+  });
+  store.updateElementSubStyle(numberEl.id, 'accent', { textColor: '#06b6d4' });
+
+  numberEl = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!.elements.find((e) => e.id === numberEl.id)!;
+  let numberHtml = renderToStaticMarkup(React.createElement(NumberCardRenderer, { element: numberEl, isSelected: false }));
+  assert(numberHtml.includes('background:transparent') || numberHtml.includes('background: transparent'), 'NumberCard virtual DOM renders transparent background');
+  assert(!numberHtml.includes('backdrop-filter:blur'), 'NumberCard virtual DOM has NO backdrop blur when transparent');
+  assert(numberHtml.includes('color:#06b6d4') || numberHtml.includes('color: #06b6d4'), 'NumberCard accent highlight renders custom cyan color');
+  assert(numberHtml.includes('98.4') || numberHtml.includes('৯৮.৪'), 'NumberCard value rendered in DOM');
+
+  // 10. Test DataVisualCardRenderer in Virtual DOM
+  store.addElement('data_visual_card');
+  scene = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!;
+  let datavizEl = scene.elements[scene.elements.length - 1];
+  store.updateElementStyle(datavizEl.id, { bgMode: 'transparent', bgOpacity: 0, backdropBlur: 0 });
+  store.updateElementData(datavizEl.id, {
+    title: 'ভিজ্যুয়াল [চার্ট]',
+    headerTag: '• BENCHMARK'
+  });
+  store.updateElementSubStyle(datavizEl.id, 'accent', { textColor: '#10b981' });
+
+  datavizEl = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!.elements.find((e) => e.id === datavizEl.id)!;
+  let datavizHtml = renderToStaticMarkup(React.createElement(DataVisualCardRenderer, { element: datavizEl, isSelected: false }));
+  assert(datavizHtml.includes('background:transparent') || datavizHtml.includes('background: transparent'), 'DataVisualCard virtual DOM renders transparent background');
+  assert(!datavizHtml.includes('backdrop-filter:blur'), 'DataVisualCard virtual DOM has NO backdrop blur when transparent');
+  assert(datavizHtml.includes('color:#10b981') || datavizHtml.includes('color: #10b981'), 'DataVisualCard accent highlight renders custom green color');
+  assert(datavizHtml.includes('BENCHMARK'), 'DataVisualCard tag rendered in DOM');
+
+  // 11. Test ButtonPillRenderer in Virtual DOM
+  store.addElement('button_pill_card');
+  scene = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!;
+  let buttonEl = scene.elements[scene.elements.length - 1];
+  store.updateElementStyle(buttonEl.id, { bgMode: 'transparent', bgOpacity: 0, backdropBlur: 0 });
+  store.updateElementData(buttonEl.id, {
+    liveText: 'সিগন্যাল [সক্রিয়]',
+    pillLabel: 'P1. live_pulse_pill'
+  });
+  store.updateElementSubStyle(buttonEl.id, 'accent', { textColor: '#06b6d4' });
+
+  buttonEl = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!.elements.find((e) => e.id === buttonEl.id)!;
+  let buttonHtml = renderToStaticMarkup(React.createElement(ButtonPillRenderer, { element: buttonEl, isSelected: false }));
+  assert(buttonHtml.includes('background:transparent') || buttonHtml.includes('background: transparent'), 'ButtonPillCard virtual DOM renders transparent background');
+  assert(!buttonHtml.includes('backdrop-filter:blur'), 'ButtonPillCard virtual DOM has NO backdrop blur when transparent');
+  assert(buttonHtml.includes('color:#06b6d4') || buttonHtml.includes('color: #06b6d4'), 'ButtonPillCard accent highlight renders custom cyan color');
+  assert(buttonHtml.includes('P1. live_pulse_pill'), 'ButtonPillCard label rendered in DOM');
+
+  // 12. Test ImageMediaRenderer in Virtual DOM
+  store.addElement('image_media_card');
+  scene = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!;
+  let imageEl = scene.elements[scene.elements.length - 1];
+  store.updateElementStyle(imageEl.id, { bgMode: 'transparent', bgOpacity: 0, backdropBlur: 0 });
+  store.updateElementData(imageEl.id, {
+    title: 'মাইক্রোকন্ট্রোলার [পিন ডায়াগ্রাম]',
+    badge: 'FIG_TEST'
+  });
+  store.updateElementSubStyle(imageEl.id, 'accent', { textColor: '#10b981' });
+
+  imageEl = useStudioStore.getState().project.scenes.find((s) => s.id === activeSceneId)!.elements.find((e) => e.id === imageEl.id)!;
+  let imageHtml = renderToStaticMarkup(React.createElement(ImageMediaRenderer, { element: imageEl, isSelected: false }));
+  assert(imageHtml.includes('background:transparent') || imageHtml.includes('background: transparent'), 'ImageMediaCard virtual DOM renders transparent background');
+  assert(!imageHtml.includes('backdrop-filter:blur'), 'ImageMediaCard virtual DOM has NO backdrop blur when transparent');
+  assert(imageHtml.includes('color:#10b981') || imageHtml.includes('color: #10b981'), 'ImageMediaCard accent highlight renders custom green color');
+  assert(imageHtml.includes('FIG_TEST'), 'ImageMediaCard badge rendered in DOM');
+
+  // Cleanup
+  store.deleteElement(heroEl.id);
+  store.deleteElement(headerEl.id);
+  store.deleteElement(footerEl.id);
+  store.deleteElement(captionEl.id);
+  store.deleteElement(listEl.id);
+  store.deleteElement(timelineEl.id);
+  store.deleteElement(numberEl.id);
+  store.deleteElement(datavizEl.id);
+  store.deleteElement(buttonEl.id);
+  store.deleteElement(imageEl.id);
+}
+
 console.log('\n================================================================');
 console.log(`  AUDIT & TEST RESULTS: ${passedTests} / ${totalTests} assertions passed (${Math.round((passedTests / totalTests) * 100)}%)`);
 if (failedTests > 0) {
@@ -993,6 +1492,6 @@ if (failedTests > 0) {
   failures.forEach((f) => console.error(`   - ${f}`));
   process.exit(1);
 } else {
-  console.log('  ALL 15 TEST SUITES PASSED CLEANLY WITH ZERO ERRORS! 🚀');
+  console.log('  ALL 17 TEST SUITES PASSED CLEANLY WITH ZERO ERRORS! 🚀');
   console.log('================================================================\n');
 }

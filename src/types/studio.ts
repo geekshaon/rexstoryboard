@@ -43,6 +43,8 @@ export interface ElementStyle {
   padding: number;
   glowColor: string;
   glowIntensity: number;
+  verticalAlign?: 'top' | 'center' | 'bottom';
+  horizontalAlign?: 'left' | 'center' | 'right';
 }
 
 export type FontFamilyType = 'Kalpurush' | 'Hind Siliguri' | 'Noto Sans Bengali' | 'Inter' | 'JetBrains Mono';
@@ -99,6 +101,10 @@ export interface SubPartStyle {
   borderWidth?: number;
   borderWidths?: BoxModelValues;
   borderRadius?: number;
+  padding?: number;
+  paddingBox?: BoxModelValues;
+  margin?: number;
+  gap?: number;
   glowColor?: string;
   glowIntensity?: number;
 }
